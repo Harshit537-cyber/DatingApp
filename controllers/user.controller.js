@@ -1,86 +1,136 @@
 const User = require('../models/user.model');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '30d',
-  });
-};
-
-const registerUser = async (req, res) => {
+const getFeedProfiles = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const currentUser = await User.findById(req.user._id);
 
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
+    let genderQuery = {};
+    if (currentUser.interestedIn !== 'both') {
+      genderQuery.gender = currentUser.interestedIn;
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const profiles = await User.find({
+      _id: { 
+        $ne: currentUser._id, 
+        $nin: [...currentUser.likes, ...currentUser.passes, ...currentUser.matches] 
+      },
+      ...genderQuery,
+      age: { 
+        $gte: currentUser.agePreference.min, 
+        $lte: currentUser.agePreference.max 
+      }
+    }).select('-password');
 
-    const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-    });
-
-    if (user) {
-      res.status(201).json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        token: generateToken(user._id),
-      });
-    } else {
-      res.status(400).json({ message: 'Invalid user data' });
-    }
+    res.json(profiles);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-const loginUser = async (req, res) => {
+const swipeUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { likedUserId, action } = req.body;
+    const currentUserId = req.user._id;
 
-    const user = await User.findOne({ email });
-
-    if (user && (await bcrypt.compare(password, user.password))) {
-      res.json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        token: generateToken(user._id),
-      });
-    } else {
-      res.status(401).json({ message: 'Invalid email or password' });
+    if (currentUserId.toString() === likedUserId) {
+      return res.status(400).json({ message: 'You cannot swipe yourself' });
     }
+
+    const currentUser = await User.findById(currentUserId);
+    const likedUser = await User.findById(likedUserId);
+
+    if (!likedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (action === 'pass') {
+      currentUser.passes.push(likedUserId);
+      await currentUser.save();
+      return res.json({ message: 'Passed successfully', match: false });
+    }
+
+    if (action === 'like' || action === 'superlike') {
+      if (!currentUser.likes.includes(likedUserId)) {
+        currentUser.likes.push(likedUserId);
+        if (action === 'superlike') {
+          currentUser.superLikes.push(likedUserId);
+        }
+        await currentUser.save();
+      }
+
+      if (likedUser.likes.includes(currentUserId)) {
+        currentUser.matches.push(likedUserId);
+        likedUser.matches.push(currentUserId);
+
+        await currentUser.save();
+        await likedUser.save();
+
+        return res.json({ message: 'It is a Match!', match: true });
+      }
+    }
+
+    res.json({ message: 'Swipe recorded successfully', match: false });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-const getUserProfile = async (req, res) => {
+const getMatches = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate('matches', '-password');
+    res.json(user.matches);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const updateProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    if (user) {
-      res.json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-      });
-    } else {
-      res.status(404).json({ message: 'User not found' });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
+
+    user.name = req.body.name || user.name;
+    user.bio = req.body.bio !== undefined ? req.body.bio : user.bio;
+    user.jobTitle = req.body.jobTitle !== undefined ? req.body.jobTitle : user.jobTitle;
+    user.company = req.body.company !== undefined ? req.body.company : user.company;
+    user.school = req.body.school !== undefined ? req.body.school : user.school;
+    user.livingIn = req.body.livingIn !== undefined ? req.body.livingIn : user.livingIn;
+    user.height = req.body.height !== undefined ? req.body.height : user.height;
+    user.interests = req.body.interests || user.interests;
+    user.images = req.body.images || user.images;
+    user.distancePreference = req.body.distancePreference || user.distancePreference;
+    user.agePreference = req.body.agePreference || user.agePreference;
+
+    if (req.body.longitude && req.body.latitude) {
+      user.location = {
+        type: 'Point',
+        coordinates: [req.body.longitude, req.body.latitude]
+      };
+    }
+
+    const updatedUser = await user.save();
+    res.json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password');
+    res.json(user);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = {
-  registerUser,
-  loginUser,
-  getUserProfile,
+  getFeedProfiles,
+  swipeUser,
+  getMatches,
+  updateProfile,
+  getProfile,
 };
