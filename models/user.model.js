@@ -65,9 +65,12 @@ const userSchema = new mongoose.Schema({
   interests: [{
     type: String
   }],
-  images: [{
+  profilePic: {
     type: String,
     required: true
+  },
+  additionalPhotos: [{
+    type: String
   }],
   location: {
     type: {

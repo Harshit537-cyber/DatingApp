@@ -23,14 +23,30 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    const imageUrls = [];
-    if (req.files && req.files.length > 0) {
-      for (const file of req.files) {
+    let profilePicUrl = '';
+    const additionalPhotoUrls = [];
+
+    if (req.files) {
+      if (req.files.profilePic && req.files.profilePic.length > 0) {
+        const file = req.files.profilePic[0];
         const b64 = Buffer.from(file.buffer).toString('base64');
         const dataURI = "data:" + file.mimetype + ";base64," + b64;
         const result = await cloudinary.uploader.upload(dataURI, { folder: 'users' });
-        imageUrls.push(result.secure_url);
+        profilePicUrl = result.secure_url;
       }
+
+      if (req.files.additionalPhotos && req.files.additionalPhotos.length > 0) {
+        for (const file of req.files.additionalPhotos) {
+          const b64 = Buffer.from(file.buffer).toString('base64');
+          const dataURI = "data:" + file.mimetype + ";base64," + b64;
+          const result = await cloudinary.uploader.upload(dataURI, { folder: 'users' });
+          additionalPhotoUrls.push(result.secure_url);
+        }
+      }
+    }
+
+    if (!profilePicUrl) {
+      return res.status(400).json({ message: 'Profile picture is required' });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -68,7 +84,8 @@ const registerUser = async (req, res) => {
       livingIn,
       height: height ? Number(height) : null,
       interests: parsedInterests,
-      images: imageUrls,
+      profilePic: profilePicUrl,
+      additionalPhotos: additionalPhotoUrls,
       location: {
         type: 'Point',
         coordinates: [Number(longitude) || 0, Number(latitude) || 0]
