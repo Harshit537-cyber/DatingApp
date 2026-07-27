@@ -4,36 +4,82 @@ const getFeedProfiles = async (req, res) => {
   try {
     const currentUser = await User.findById(req.user._id);
 
-    let genderQuery = {};
-    if (currentUser.interestedIn !== 'both') {
-      genderQuery.gender = currentUser.interestedIn;
-    }
-
-    const profiles = await User.find({
+    let query = {
       _id: { 
         $ne: currentUser._id, 
         $nin: [...currentUser.likes, ...currentUser.passes, ...currentUser.matches] 
       },
-      ...genderQuery,
+      interestedIn: { $in: [currentUser.gender, 'both'] },
       age: { 
         $gte: currentUser.agePreference.min, 
         $lte: currentUser.agePreference.max 
       }
-    }).select('-password');
+    };
 
+    if (currentUser.interestedIn !== 'both') {
+      query.gender = currentUser.interestedIn;
+    }
+
+    const profiles = await User.find(query).select('-password');
     res.json(profiles);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-const swipeUser = async (req, res) => {
+const filterProfiles = async (req, res) => {
   try {
-    const { likedUserId, action } = req.body;
+    const currentUser = await User.findById(req.user._id);
+    const { gender, minAge, maxAge, minHeight, maxHeight, interests, isVerified } = req.body;
+
+    let query = {
+      _id: { 
+        $ne: currentUser._id, 
+        $nin: [...currentUser.likes, ...currentUser.passes, ...currentUser.matches] 
+      },
+      interestedIn: { $in: [currentUser.gender, 'both'] }
+    };
+
+    if (gender && gender !== 'both') {
+      query.gender = gender;
+    } else if (!gender && currentUser.interestedIn !== 'both') {
+      query.gender = currentUser.interestedIn;
+    }
+
+    const minA = minAge ? Number(minAge) : currentUser.agePreference.min;
+    const maxA = maxAge ? Number(maxAge) : currentUser.agePreference.max;
+    query.age = { $gte: minA, $lte: maxA };
+
+    if (minHeight || maxHeight) {
+      query.height = {};
+      if (minHeight) query.height.$gte = Number(minHeight);
+      if (maxHeight) query.height.$lte = Number(maxHeight);
+    }
+
+    if (interests && interests.length > 0) {
+      query.interests = { 
+        $in: Array.isArray(interests) ? interests : interests.split(',') 
+      };
+    }
+
+    if (typeof isVerified === 'boolean') {
+      query.isVerified = isVerified;
+    }
+
+    const profiles = await User.find(query).select('-password');
+    res.json(profiles);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const likeProfile = async (req, res) => {
+  try {
+    const { likedUserId } = req.body;
     const currentUserId = req.user._id;
 
     if (currentUserId.toString() === likedUserId) {
-      return res.status(400).json({ message: 'You cannot swipe yourself' });
+      return res.status(400).json({ message: 'You cannot like yourself' });
     }
 
     const currentUser = await User.findById(currentUserId);
@@ -43,33 +89,28 @@ const swipeUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (action === 'pass') {
-      currentUser.passes.push(likedUserId);
-      await currentUser.save();
-      return res.json({ message: 'Passed successfully', match: false });
+    if (!currentUser.likes.includes(likedUserId)) {
+      currentUser.likes.push(likedUserId);
     }
 
-    if (action === 'like' || action === 'superlike') {
-      if (!currentUser.likes.includes(likedUserId)) {
-        currentUser.likes.push(likedUserId);
-        if (action === 'superlike') {
-          currentUser.superLikes.push(likedUserId);
-        }
-        await currentUser.save();
-      }
-
-      if (likedUser.likes.includes(currentUserId)) {
+    let isMatch = false;
+    if (likedUser.likes.includes(currentUserId)) {
+      isMatch = true;
+      if (!currentUser.matches.includes(likedUserId)) {
         currentUser.matches.push(likedUserId);
-        likedUser.matches.push(currentUserId);
-
-        await currentUser.save();
-        await likedUser.save();
-
-        return res.json({ message: 'It is a Match!', match: true });
       }
+      if (!likedUser.matches.includes(currentUserId)) {
+        likedUser.matches.push(currentUserId);
+      }
+      await likedUser.save();
     }
 
-    res.json({ message: 'Swipe recorded successfully', match: false });
+    await currentUser.save();
+
+    res.json({
+      message: isMatch ? 'Profile matched' : 'Profile liked successfully',
+      match: isMatch
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -84,53 +125,9 @@ const getMatches = async (req, res) => {
   }
 };
 
-const updateProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id);
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    user.name = req.body.name || user.name;
-    user.bio = req.body.bio !== undefined ? req.body.bio : user.bio;
-    user.jobTitle = req.body.jobTitle !== undefined ? req.body.jobTitle : user.jobTitle;
-    user.company = req.body.company !== undefined ? req.body.company : user.company;
-    user.school = req.body.school !== undefined ? req.body.school : user.school;
-    user.livingIn = req.body.livingIn !== undefined ? req.body.livingIn : user.livingIn;
-    user.height = req.body.height !== undefined ? req.body.height : user.height;
-    user.interests = req.body.interests || user.interests;
-    user.images = req.body.images || user.images;
-    user.distancePreference = req.body.distancePreference || user.distancePreference;
-    user.agePreference = req.body.agePreference || user.agePreference;
-
-    if (req.body.longitude && req.body.latitude) {
-      user.location = {
-        type: 'Point',
-        coordinates: [req.body.longitude, req.body.latitude]
-      };
-    }
-
-    const updatedUser = await user.save();
-    res.json(updatedUser);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const getProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).select('-password');
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
 module.exports = {
   getFeedProfiles,
-  swipeUser,
+  filterProfiles,
+  likeProfile,
   getMatches,
-  updateProfile,
-  getProfile,
 };

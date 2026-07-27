@@ -2,17 +2,15 @@ const express = require('express');
 const router = express.Router();
 const { 
   getFeedProfiles, 
-  swipeUser, 
-  getMatches, 
-  updateProfile, 
-  getProfile 
+  filterProfiles, 
+  likeProfile, 
+  getMatches 
 } = require('../controllers/user.controller');
 const { protect } = require('../middleware/authMiddleware');
 
 router.get('/feed', protect, getFeedProfiles);
-router.post('/swipe', protect, swipeUser);
+router.post('/filter', protect, filterProfiles);
+router.post('/like', protect, likeProfile);
 router.get('/matches', protect, getMatches);
-router.get('/profile', protect, getProfile);
-router.put('/profile', protect, updateProfile);
 
 module.exports = router;
