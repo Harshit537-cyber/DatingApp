@@ -110,7 +110,21 @@ const userSchema = new mongoose.Schema({
   isVerified: {
     type: Boolean,
     default: false
-  }
+  },
+  isDeactivated: {
+  type: Boolean,
+  default: false
+},
+
+deactivateReason: {
+  type: String,
+  default: ''
+},
+
+deactivatedAt: {
+  type: Date,
+  default: null
+}
 }, {
   timestamps: true
 });

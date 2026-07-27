@@ -129,8 +129,72 @@ const loginUser = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.id; // JWT middleware se milega
 
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    await User.findByIdAndDelete(userId);
+
+    res.status(200).json({
+      message: "Account deleted successfully"
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
+const deactivateAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { reason } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({
+        message: "Please provide reason for deactivating account"
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+
+    user.isDeactivated = true;
+    user.deactivateReason = reason;
+    user.deactivatedAt = new Date();
+
+    await user.save();
+
+
+    res.status(200).json({
+      message: "Account deactivated successfully",
+      reason: user.deactivateReason
+    });
+
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
 module.exports = {
   registerUser,
   loginUser,
+  deleteAccount,
+  deactivateAccount
 };
