@@ -124,6 +124,15 @@ deactivateReason: {
 deactivatedAt: {
   type: Date,
   default: null
+},
+isProfileHidden: {
+    type: Boolean,
+    default: false
+},
+
+profileHiddenUntil: {
+    type: Date,
+    default: null
 }
 }, {
   timestamps: true

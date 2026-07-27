@@ -192,9 +192,158 @@ const deactivateAccount = async (req, res) => {
     });
   }
 };
+const getProfileById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    res.status(200).json({
+      message: "Profile fetched successfully",
+      user
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
+const activateAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    user.isDeactivated = false;
+    user.deactivateReason = null;
+    user.deactivatedAt = null;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Account activated successfully"
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
+const hideProfile = async (req, res) => {
+    try {
+
+        const userId = req.user.id;
+
+        const { days } = req.body;
+
+
+        // Allowed hide duration
+        const allowedDays = [1, 7, 30];
+
+
+        if (!allowedDays.includes(Number(days))) {
+            return res.status(400).json({
+                message: "Please select only 1, 7 or 30 days"
+            });
+        }
+
+
+        const user = await User.findById(userId);
+
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+
+        const hideUntil = new Date();
+
+        hideUntil.setDate(
+            hideUntil.getDate() + Number(days)
+        );
+
+
+        user.isProfileHidden = true;
+        user.profileHiddenUntil = hideUntil;
+
+
+        await user.save();
+
+
+        res.status(200).json({
+            message: `Profile hidden for ${days} days`,
+            profileHiddenUntil: user.profileHiddenUntil
+        });
+
+
+    } catch(error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+};
+const unhideProfile = async (req, res) => {
+  try {
+
+    const userId = req.user.id;
+
+
+    const user = await User.findById(userId);
+
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+
+    user.isProfileHidden = false;
+    user.profileHiddenUntil = null;
+
+
+    await user.save();
+
+
+    res.status(200).json({
+      message: "Profile unhidden successfully"
+    });
+
+
+  } catch (error) {
+
+    res.status(500).json({
+      message: error.message
+    });
+
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   deleteAccount,
-  deactivateAccount
+  deactivateAccount,
+  activateAccount,
+  getProfileById,
+  hideProfile,
+  unhideProfile
 };
