@@ -1,6 +1,7 @@
 const User = require('../models/user.model');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const cloudinary = require('../config/cloudinary');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -13,8 +14,8 @@ const registerUser = async (req, res) => {
     const { 
       name, email, password, gender, interestedIn, 
       age, bio, jobTitle, company, school, livingIn, 
-      height, interests, images, longitude, latitude, 
-      distancePreference, agePreference 
+      height, longitude, latitude, distancePreference, 
+      agePreference, interests 
     } = req.body;
 
     const userExists = await User.findOne({ email });
@@ -22,8 +23,36 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
+    const imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const b64 = Buffer.from(file.buffer).toString('base64');
+        const dataURI = "data:" + file.mimetype + ";base64," + b64;
+        const result = await cloudinary.uploader.upload(dataURI, { folder: 'users' });
+        imageUrls.push(result.secure_url);
+      }
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+
+    let parsedAgePreference;
+    if (agePreference) {
+       try { 
+         parsedAgePreference = typeof agePreference === 'string' ? JSON.parse(agePreference) : agePreference; 
+       } catch (e) { 
+         parsedAgePreference = undefined; 
+       }
+    }
+
+    let parsedInterests = [];
+    if (interests) {
+       try { 
+         parsedInterests = typeof interests === 'string' ? JSON.parse(interests) : interests; 
+       } catch (e) { 
+         parsedInterests = typeof interests === 'string' ? interests.split(',') : []; 
+       }
+    }
 
     const user = await User.create({
       name,
@@ -31,21 +60,21 @@ const registerUser = async (req, res) => {
       password: hashedPassword,
       gender,
       interestedIn,
-      age,
+      age: Number(age),
       bio,
       jobTitle,
       company,
       school,
       livingIn,
-      height,
-      interests,
-      images,
+      height: height ? Number(height) : null,
+      interests: parsedInterests,
+      images: imageUrls,
       location: {
         type: 'Point',
-        coordinates: [longitude || 0, latitude || 0]
+        coordinates: [Number(longitude) || 0, Number(latitude) || 0]
       },
-      distancePreference,
-      agePreference
+      distancePreference: distancePreference ? Number(distancePreference) : 50,
+      ...(parsedAgePreference && { agePreference: parsedAgePreference })
     });
 
     if (user) {
@@ -67,7 +96,6 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const user = await User.findOne({ email });
 
     if (user && (await bcrypt.compare(password, user.password))) {
