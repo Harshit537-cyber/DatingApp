@@ -31,7 +31,7 @@ const filterProfiles = async (req, res) => {
   try {
     const currentUser = await User.findById(req.user._id);
     const { gender, minAge, maxAge, minHeight, maxHeight, interests, isVerified } = req.body;
-
+   
     let query = {
       _id: { 
         $ne: currentUser._id, 
@@ -129,5 +129,5 @@ module.exports = {
   getFeedProfiles,
   filterProfiles,
   likeProfile,
-  getMatches,
+  getMatches
 };

@@ -6,7 +6,7 @@ const {
     getMyReports
 } = require('../controllers/report.controller');
 
-const { protect } = require('../middleware/authMiddleware');
+const protect = require('../middleware/authMiddleware');
 
 
 // Report account

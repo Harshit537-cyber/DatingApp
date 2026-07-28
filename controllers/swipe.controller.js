@@ -8,7 +8,7 @@ const superLikeUser = async (req, res) => {
         const userId = req.user.id;
 
         const { targetUserId } = req.body;
-
+ 
 
         // Cannot super like yourself
         if(userId.toString() === targetUserId){

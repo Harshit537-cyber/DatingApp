@@ -6,7 +6,7 @@ const {
   likeProfile, 
   getMatches 
 } = require('../controllers/user.controller');
-const { protect } = require('../middleware/authMiddleware');
+const protect = require('../middleware/authMiddleware');
 
 router.get('/feed', protect, getFeedProfiles);
 router.post('/filter', protect, filterProfiles);

@@ -5,7 +5,7 @@ const {
     superLikeUser
 } = require('../controllers/swipe.controller');
 
-const { protect } = require('../middleware/authMiddleware');
+const protect = require('../middleware/authMiddleware');
 
 
 // Super Like API
