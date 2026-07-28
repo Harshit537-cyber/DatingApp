@@ -72,6 +72,10 @@ const userSchema = new mongoose.Schema({
   additionalPhotos: [{
     type: String
   }],
+  blockedUsers: [{
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'User'
+}],
   location: {
     type: {
       type: String,
@@ -112,28 +116,49 @@ const userSchema = new mongoose.Schema({
     default: false
   },
   isDeactivated: {
-  type: Boolean,
-  default: false
-},
-
-deactivateReason: {
-  type: String,
-  default: ''
-},
-
-deactivatedAt: {
-  type: Date,
-  default: null
-},
-isProfileHidden: {
     type: Boolean,
     default: false
-},
-
-profileHiddenUntil: {
+  },
+  deactivateReason: {
+    type: String,
+    default: ''
+  },
+  deactivatedAt: {
     type: Date,
     default: null
-}
+  },
+  isProfileHidden: {
+    type: Boolean,
+    default: false
+  },
+  profileHiddenUntil: {
+    type: Date,
+    default: null
+  },
+  subscription: {
+    plan: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Plan',
+      default: null
+    },
+    billingCycle: {
+      type: String,
+      enum: ['monthly', 'annual'],
+      default: 'monthly'
+    },
+    startDate: {
+      type: Date,
+      default: null
+    },
+    endDate: {
+      type: Date,
+      default: null
+    },
+    isActive: {
+      type: Boolean,
+      default: false
+    }
+  }
 }, {
   timestamps: true
 });
