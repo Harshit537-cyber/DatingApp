@@ -68,10 +68,68 @@ const getPlans = async (req, res) => {
     }
 };
 
+const addWalletBalance = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { amount } = req.body;
+
+        if (!amount || Number(amount) <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid amount'
+            });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        user.walletBalance = (user.walletBalance || 0) + Number(amount);
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Amount added to wallet successfully',
+            walletBalance: user.walletBalance
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+const getWalletBalance = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            walletBalance: user.walletBalance || 0
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
 const subscribePlan = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { planId, billingCycle } = req.body;
+        const { planId, billingCycle, paymentMethod } = req.body;
 
         if (!['monthly', 'annual'].includes(billingCycle)) {
             return res.status(400).json({
@@ -88,6 +146,20 @@ const subscribePlan = async (req, res) => {
             });
         }
 
+        const planPrice = billingCycle === 'monthly' ? plan.prices.monthly : plan.prices.annual;
+        const user = await User.findById(userId);
+
+        if (paymentMethod === 'wallet') {
+            const currentBalance = user.walletBalance || 0;
+            if (currentBalance < planPrice) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Insufficient wallet balance. Required: $${planPrice}, Available: $${currentBalance}`
+                });
+            }
+            user.walletBalance = currentBalance - planPrice;
+        }
+
         const startDate = new Date();
         const endDate = new Date();
         if (billingCycle === 'monthly') {
@@ -96,23 +168,21 @@ const subscribePlan = async (req, res) => {
             endDate.setFullYear(endDate.getFullYear() + 1);
         }
 
-        const user = await User.findByIdAndUpdate(
-            userId,
-            {
-                subscription: {
-                    plan: plan._id,
-                    billingCycle,
-                    startDate,
-                    endDate,
-                    isActive: true
-                }
-            },
-            { new: true }
-        ).populate('subscription.plan');
+        user.subscription = {
+            plan: plan._id,
+            billingCycle,
+            startDate,
+            endDate,
+            isActive: true
+        };
+
+        await user.save();
+        await user.populate('subscription.plan');
 
         res.status(200).json({
             success: true,
             message: 'Subscribed successfully',
+            walletBalance: user.walletBalance || 0,
             subscription: user.subscription
         });
     } catch (error) {
@@ -151,6 +221,8 @@ const getUserSubscription = async (req, res) => {
 
 module.exports = {
     getPlans,
+    addWalletBalance,
+    getWalletBalance,
     subscribePlan,
     getUserSubscription
 };

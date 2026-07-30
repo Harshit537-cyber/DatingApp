@@ -1,52 +1,69 @@
-const User = require('../models/user.model');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const cloudinary = require('../config/cloudinary');
+const User = require("../models/user.model");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const cloudinary = require("../config/cloudinary");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '30d',
+    expiresIn: "30d",
   });
 };
 
 const registerUser = async (req, res) => {
   try {
-    const { 
-      name, email, password, gender, interestedIn, 
-      age, bio, jobTitle, company, school, livingIn, 
-      height, longitude, latitude, distancePreference, 
-      agePreference, interests 
+    const {
+      name,
+      email,
+      password,
+      gender,
+      interestedIn,
+      age,
+      bio,
+      jobTitle,
+      company,
+      school,
+      livingIn,
+      height,
+      longitude,
+      latitude,
+      distancePreference,
+      agePreference,
+      interests,
     } = req.body;
 
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: "User already exists" });
     }
 
-    let profilePicUrl = '';
+    let profilePicUrl = "";
     const additionalPhotoUrls = [];
 
     if (req.files) {
       if (req.files.profilePic && req.files.profilePic.length > 0) {
         const file = req.files.profilePic[0];
-        const b64 = Buffer.from(file.buffer).toString('base64');
+        const b64 = Buffer.from(file.buffer).toString("base64");
         const dataURI = "data:" + file.mimetype + ";base64," + b64;
-        const result = await cloudinary.uploader.upload(dataURI, { folder: 'users' });
+        const result = await cloudinary.uploader.upload(dataURI, {
+          folder: "users",
+        });
         profilePicUrl = result.secure_url;
       }
 
       if (req.files.additionalPhotos && req.files.additionalPhotos.length > 0) {
         for (const file of req.files.additionalPhotos) {
-          const b64 = Buffer.from(file.buffer).toString('base64');
+          const b64 = Buffer.from(file.buffer).toString("base64");
           const dataURI = "data:" + file.mimetype + ";base64," + b64;
-          const result = await cloudinary.uploader.upload(dataURI, { folder: 'users' });
+          const result = await cloudinary.uploader.upload(dataURI, {
+            folder: "users",
+          });
           additionalPhotoUrls.push(result.secure_url);
         }
       }
     }
 
     if (!profilePicUrl) {
-      return res.status(400).json({ message: 'Profile picture is required' });
+      return res.status(400).json({ message: "Profile picture is required" });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -54,20 +71,25 @@ const registerUser = async (req, res) => {
 
     let parsedAgePreference;
     if (agePreference) {
-       try { 
-         parsedAgePreference = typeof agePreference === 'string' ? JSON.parse(agePreference) : agePreference; 
-       } catch (e) { 
-         parsedAgePreference = undefined; 
-       }
+      try {
+        parsedAgePreference =
+          typeof agePreference === "string"
+            ? JSON.parse(agePreference)
+            : agePreference;
+      } catch (e) {
+        parsedAgePreference = undefined;
+      }
     }
 
     let parsedInterests = [];
     if (interests) {
-       try { 
-         parsedInterests = typeof interests === 'string' ? JSON.parse(interests) : interests; 
-       } catch (e) { 
-         parsedInterests = typeof interests === 'string' ? interests.split(',') : []; 
-       }
+      try {
+        parsedInterests =
+          typeof interests === "string" ? JSON.parse(interests) : interests;
+      } catch (e) {
+        parsedInterests =
+          typeof interests === "string" ? interests.split(",") : [];
+      }
     }
 
     const user = await User.create({
@@ -87,11 +109,11 @@ const registerUser = async (req, res) => {
       profilePic: profilePicUrl,
       additionalPhotos: additionalPhotoUrls,
       location: {
-        type: 'Point',
-        coordinates: [Number(longitude) || 0, Number(latitude) || 0]
+        type: "Point",
+        coordinates: [Number(longitude) || 0, Number(latitude) || 0],
       },
       distancePreference: distancePreference ? Number(distancePreference) : 50,
-      ...(parsedAgePreference && { agePreference: parsedAgePreference })
+      ...(parsedAgePreference && { agePreference: parsedAgePreference }),
     });
 
     if (user) {
@@ -103,7 +125,7 @@ const registerUser = async (req, res) => {
         token: generateToken(user._id),
       });
     } else {
-      res.status(400).json({ message: 'Invalid user data' });
+      res.status(400).json({ message: "Invalid user data" });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -123,7 +145,7 @@ const loginUser = async (req, res) => {
         token: generateToken(user._id),
       });
     } else {
-      res.status(401).json({ message: 'Invalid email or password' });
+      res.status(401).json({ message: "Invalid email or password" });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -137,19 +159,18 @@ const deleteAccount = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({
-        message: "User not found"
+        message: "User not found",
       });
     }
 
     await User.findByIdAndDelete(userId);
 
     res.status(200).json({
-      message: "Account deleted successfully"
+      message: "Account deleted successfully",
     });
-
   } catch (error) {
     res.status(500).json({
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -160,7 +181,7 @@ const deactivateAccount = async (req, res) => {
 
     if (!reason) {
       return res.status(400).json({
-        message: "Please provide reason for deactivating account"
+        message: "Please provide reason for deactivating account",
       });
     }
 
@@ -168,10 +189,9 @@ const deactivateAccount = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({
-        message: "User not found"
+        message: "User not found",
       });
     }
-
 
     user.isDeactivated = true;
     user.deactivateReason = reason;
@@ -179,16 +199,13 @@ const deactivateAccount = async (req, res) => {
 
     await user.save();
 
-
     res.status(200).json({
       message: "Account deactivated successfully",
-      reason: user.deactivateReason
+      reason: user.deactivateReason,
     });
-
-
   } catch (error) {
     res.status(500).json({
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -196,22 +213,21 @@ const getProfileById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await User.findById(id).select('-password');
+    const user = await User.findById(id).select("-password");
 
     if (!user) {
       return res.status(404).json({
-        message: "User not found"
+        message: "User not found",
       });
     }
 
     res.status(200).json({
       message: "Profile fetched successfully",
-      user
+      user,
     });
-
   } catch (error) {
     res.status(500).json({
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -223,7 +239,7 @@ const activateAccount = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({
-        message: "User not found"
+        message: "User not found",
       });
     }
 
@@ -234,116 +250,174 @@ const activateAccount = async (req, res) => {
     await user.save();
 
     res.status(200).json({
-      message: "Account activated successfully"
+      message: "Account activated successfully",
     });
-
   } catch (error) {
     res.status(500).json({
-      message: error.message
+      message: error.message,
     });
   }
 };
 const hideProfile = async (req, res) => {
-    try {
-
-        const userId = req.user.id;
-
-        const { days } = req.body;
-
-
-        // Allowed hide duration
-        const allowedDays = [1, 7, 30];
-
-
-        if (!allowedDays.includes(Number(days))) {
-            return res.status(400).json({
-                message: "Please select only 1, 7 or 30 days"
-            });
-        }
-
-
-        const user = await User.findById(userId);
-
-
-        if (!user) {
-            return res.status(404).json({
-                message: "User not found"
-            });
-        }
-
-
-        const hideUntil = new Date();
-
-        hideUntil.setDate(
-            hideUntil.getDate() + Number(days)
-        );
-
-
-        user.isProfileHidden = true;
-        user.profileHiddenUntil = hideUntil;
-
-
-        await user.save();
-
-
-        res.status(200).json({
-            message: `Profile hidden for ${days} days`,
-            profileHiddenUntil: user.profileHiddenUntil
-        });
-
-
-    } catch(error) {
-
-        res.status(500).json({
-            message: error.message
-        });
-
-    }
-};
-const unhideProfile = async (req, res) => {
   try {
-
     const userId = req.user.id;
 
+    const { days } = req.body;
 
-    const user = await User.findById(userId);
+    // Allowed hide duration
+    const allowedDays = [1, 7, 30];
 
-
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found"
+    if (!allowedDays.includes(Number(days))) {
+      return res.status(400).json({
+        message: "Please select only 1, 7 or 30 days",
       });
     }
 
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const hideUntil = new Date();
+
+    hideUntil.setDate(hideUntil.getDate() + Number(days));
+
+    user.isProfileHidden = true;
+    user.profileHiddenUntil = hideUntil;
+
+    await user.save();
+
+    res.status(200).json({
+      message: `Profile hidden for ${days} days`,
+      profileHiddenUntil: user.profileHiddenUntil,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+const unhideProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
 
     user.isProfileHidden = false;
     user.profileHiddenUntil = null;
 
-
     await user.save();
 
+    res.status(200).json({
+      message: "Profile unhidden successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+const getMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json({ user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const updates = { ...req.body };
+
+    delete updates.password;
+    delete updates.email;
+
+    if (req.files) {
+      if (req.files.profilePic && req.files.profilePic.length > 0) {
+        const file = req.files.profilePic[0];
+        const b64 = Buffer.from(file.buffer).toString("base64");
+        const dataURI = "data:" + file.mimetype + ";base64," + b64;
+        const result = await cloudinary.uploader.upload(dataURI, {
+          folder: "users",
+        });
+        updates.profilePic = result.secure_url;
+      }
+
+      if (req.files.additionalPhotos && req.files.additionalPhotos.length > 0) {
+        const additionalPhotoUrls = [];
+        for (const file of req.files.additionalPhotos) {
+          const b64 = Buffer.from(file.buffer).toString("base64");
+          const dataURI = "data:" + file.mimetype + ";base64," + b64;
+          const result = await cloudinary.uploader.upload(dataURI, {
+            folder: "users",
+          });
+          additionalPhotoUrls.push(result.secure_url);
+        }
+        updates.additionalPhotos = additionalPhotoUrls;
+      }
+    }
+
+    if (updates.interests) {
+      try {
+        updates.interests =
+          typeof updates.interests === "string"
+            ? JSON.parse(updates.interests)
+            : updates.interests;
+      } catch (e) {
+        updates.interests =
+          typeof updates.interests === "string"
+            ? updates.interests.split(",")
+            : updates.interests;
+      }
+    }
+
+    if (updates.agePreference) {
+      try {
+        updates.agePreference =
+          typeof updates.agePreference === "string"
+            ? JSON.parse(updates.agePreference)
+            : updates.agePreference;
+      } catch (e) {}
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(userId, updates, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
 
     res.status(200).json({
-      message: "Profile unhidden successfully"
+      message: "Profile updated successfully",
+      user: updatedUser,
     });
-
-
   } catch (error) {
-
-    res.status(500).json({
-      message: error.message
-    });
-
+    res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = {
   registerUser,
   loginUser,
+  getMe,
+  updateProfile,
   deleteAccount,
   deactivateAccount,
   activateAccount,
   getProfileById,
   hideProfile,
-  unhideProfile
+  unhideProfile,
 };

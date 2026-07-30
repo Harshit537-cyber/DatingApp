@@ -135,6 +135,10 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  walletBalance: {
+  type: Number,
+  default: 0
+},
   subscription: {
     plan: {
       type: mongoose.Schema.Types.ObjectId,

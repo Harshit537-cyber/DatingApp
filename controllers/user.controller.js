@@ -180,10 +180,42 @@ const likeProfile = async (req, res) => {
   }
 };
 
+const getSentLikes = async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user._id);
+    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id }).distinct('_id');
+
+    const excludeIds = [
+      ...currentUser.matches,
+      ...currentUser.blockedUsers,
+      ...usersWhoBlockedMe
+    ];
+
+    const sentLikes = await User.find({
+      _id: { $in: currentUser.likes, $nin: excludeIds }
+    }).select('-password');
+
+    res.json(sentLikes);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const getMatches = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate('matches', '-password');
-    res.json(user.matches);
+    const currentUser = await User.findById(req.user._id);
+    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id }).distinct('_id');
+
+    const excludeIds = [
+      ...currentUser.blockedUsers,
+      ...usersWhoBlockedMe
+    ];
+
+    const matches = await User.find({
+      _id: { $in: currentUser.matches, $nin: excludeIds }
+    }).select('-password');
+
+    res.json(matches);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -278,6 +310,7 @@ module.exports = {
   getFeedProfiles,
   filterProfiles,
   likeProfile,
+  getSentLikes,
   getMatches,
   getWhoLikedMe,
   blockUser,
