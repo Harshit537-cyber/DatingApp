@@ -1,319 +1,480 @@
-const User = require('../models/user.model');
-const Swipe = require('../models/swipe.model');
+const User = require("../models/user.model");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const cloudinary = require("../config/cloudinary");
 
-const getFeedProfiles = async (req, res) => {
-  try {
-    const currentUser = await User.findById(req.user._id).populate('subscription.plan');
-
-    const usersWhoBlockedMe = await User.find({ blockedUsers: currentUser._id }).distinct('_id');
-
-    const excludeIds = [
-      currentUser._id,
-      ...currentUser.likes,
-      ...currentUser.passes,
-      ...currentUser.matches,
-      ...currentUser.blockedUsers,
-      ...usersWhoBlockedMe
-    ];
-
-    let query = {
-      _id: { $nin: excludeIds },
-      interestedIn: { $in: [currentUser.gender, 'both'] },
-      age: { 
-        $gte: currentUser.agePreference.min, 
-        $lte: currentUser.agePreference.max 
-      }
-    };
-
-    if (currentUser.interestedIn !== 'both') {
-      query.gender = currentUser.interestedIn;
-    }
-
-    const profiles = await User.find(query).select('-password');
-    res.json(profiles);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: "30d",
+  });
 };
 
-const filterProfiles = async (req, res) => {
+const registerUser = async (req, res) => {
   try {
-    const currentUser = await User.findById(req.user._id).populate('subscription.plan');
-    const { gender, minAge, maxAge, minHeight, maxHeight, interests, isVerified } = req.body;
+    const {
+      name,
+      email,
+      password,
+      gender,
+      interestedIn,
+      age,
+      bio,
+      jobTitle,
+      company,
+      school,
+      livingIn,
+      height,
+      longitude,
+      latitude,
+      distancePreference,
+      agePreference,
+      interests,
+      lifestyle,
+      languages,
+    } = req.body;
 
-    const isSubscribed = currentUser.subscription && 
-                        currentUser.subscription.isActive && 
-                        new Date(currentUser.subscription.endDate) > new Date();
-
-    const planName = currentUser.subscription?.plan?.name;
-    const hasAdvancedFiltersAccess = isSubscribed && (planName === 'Gold' || planName === 'Platinum');
-
-    if ((minHeight || maxHeight || interests || typeof isVerified === 'boolean') && !hasAdvancedFiltersAccess) {
-      return res.status(403).json({
-        message: "Advanced filters (Height, Interests, Verified Status) are available only on Gold and Platinum plans."
-      });
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: "User already exists" });
     }
 
-    const usersWhoBlockedMe = await User.find({ blockedUsers: currentUser._id }).distinct('_id');
+    let profilePicUrl = "";
+    const additionalPhotoUrls = [];
 
-    const excludeIds = [
-      currentUser._id,
-      ...currentUser.likes,
-      ...currentUser.passes,
-      ...currentUser.matches,
-      ...currentUser.blockedUsers,
-      ...usersWhoBlockedMe
-    ];
-
-    let query = {
-      _id: { $nin: excludeIds },
-      interestedIn: { $in: [currentUser.gender, 'both'] }
-    };
-
-    if (gender && gender !== 'both') {
-      query.gender = gender;
-    } else if (!gender && currentUser.interestedIn !== 'both') {
-      query.gender = currentUser.interestedIn;
-    }
-
-    const minA = minAge ? Number(minAge) : currentUser.agePreference.min;
-    const maxA = maxAge ? Number(maxAge) : currentUser.agePreference.max;
-    query.age = { $gte: minA, $lte: maxA };
-
-    if (hasAdvancedFiltersAccess) {
-      if (minHeight || maxHeight) {
-        query.height = {};
-        if (minHeight) query.height.$gte = Number(minHeight);
-        if (maxHeight) query.height.$lte = Number(maxHeight);
-      }
-
-      if (interests && interests.length > 0) {
-        query.interests = { 
-          $in: Array.isArray(interests) ? interests : interests.split(',') 
-        };
-      }
-
-      if (typeof isVerified === 'boolean') {
-        query.isVerified = isVerified;
-      }
-    }
-
-    const profiles = await User.find(query).select('-password');
-    res.json(profiles);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const likeProfile = async (req, res) => {
-  try {
-    const { likedUserId } = req.body;
-    const currentUserId = req.user._id;
-
-    if (currentUserId.toString() === likedUserId) {
-      return res.status(400).json({ message: 'You cannot like yourself' });
-    }
-
-    const currentUser = await User.findById(currentUserId).populate('subscription.plan');
-    const likedUser = await User.findById(likedUserId);
-
-    if (!likedUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (currentUser.blockedUsers.includes(likedUserId) || likedUser.blockedUsers.includes(currentUserId)) {
-      return res.status(400).json({ message: 'Cannot perform action on blocked profile' });
-    }
-
-    const isSubscribed = currentUser.subscription && 
-                        currentUser.subscription.isActive && 
-                        new Date(currentUser.subscription.endDate) > new Date();
-
-    if (!isSubscribed) {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-
-      const likesToday = await Swipe.countDocuments({
-        fromUser: currentUserId,
-        action: 'like',
-        createdAt: { $gte: startOfDay }
-      });
-
-      const FREE_DAILY_LIKE_LIMIT = 10;
-      if (likesToday >= FREE_DAILY_LIKE_LIMIT) {
-        return res.status(403).json({
-          message: `Daily like limit reached (${FREE_DAILY_LIKE_LIMIT}/day). Subscribe to Silver, Gold, or Platinum for unlimited likes.`
+    if (req.files) {
+      if (req.files.profilePic && req.files.profilePic.length > 0) {
+        const file = req.files.profilePic[0];
+        const b64 = Buffer.from(file.buffer).toString("base64");
+        const dataURI = "data:" + file.mimetype + ";base64," + b64;
+        const result = await cloudinary.uploader.upload(dataURI, {
+          folder: "users",
         });
+        profilePicUrl = result.secure_url;
+      }
+
+      if (req.files.additionalPhotos && req.files.additionalPhotos.length > 0) {
+        for (const file of req.files.additionalPhotos) {
+          const b64 = Buffer.from(file.buffer).toString("base64");
+          const dataURI = "data:" + file.mimetype + ";base64," + b64;
+          const result = await cloudinary.uploader.upload(dataURI, {
+            folder: "users",
+          });
+          additionalPhotoUrls.push(result.secure_url);
+        }
       }
     }
 
-    if (!currentUser.likes.includes(likedUserId)) {
-      currentUser.likes.push(likedUserId);
+    if (!profilePicUrl) {
+      return res.status(400).json({ message: "Profile picture is required" });
     }
 
-    await Swipe.create({
-      fromUser: currentUserId,
-      toUser: likedUserId,
-      action: 'like'
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    let parsedAgePreference;
+    if (agePreference) {
+      try {
+        parsedAgePreference =
+          typeof agePreference === "string"
+            ? JSON.parse(agePreference)
+            : agePreference;
+      } catch (e) {
+        parsedAgePreference = undefined;
+      }
+    }
+
+    let parsedInterests = [];
+    if (interests) {
+      try {
+        parsedInterests =
+          typeof interests === "string" ? JSON.parse(interests) : interests;
+      } catch (e) {
+        parsedInterests =
+          typeof interests === "string" ? interests.split(",") : [];
+      }
+    }
+
+    let parsedLifestyle = [];
+    if (lifestyle) {
+      try {
+        parsedLifestyle =
+          typeof lifestyle === "string" ? JSON.parse(lifestyle) : lifestyle;
+      } catch (e) {
+        parsedLifestyle =
+          typeof lifestyle === "string" ? lifestyle.split(",") : [];
+      }
+    }
+
+    let parsedLanguages = [];
+    if (languages) {
+      try {
+        parsedLanguages =
+          typeof languages === "string" ? JSON.parse(languages) : languages;
+      } catch (e) {
+        parsedLanguages =
+          typeof languages === "string" ? languages.split(",") : [];
+      }
+    }
+
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      gender,
+      interestedIn,
+      age: Number(age),
+      bio,
+      jobTitle,
+      company,
+      school,
+      livingIn,
+      height: height ? Number(height) : null,
+      interests: parsedInterests,
+      lifestyle: parsedLifestyle,
+      languages: parsedLanguages,
+      profilePic: profilePicUrl,
+      additionalPhotos: additionalPhotoUrls,
+      location: {
+        type: "Point",
+        coordinates: [Number(longitude) || 0, Number(latitude) || 0],
+      },
+      distancePreference: distancePreference ? Number(distancePreference) : 50,
+      ...(parsedAgePreference && { agePreference: parsedAgePreference }),
     });
 
-    let isMatch = false;
-    if (likedUser.likes.includes(currentUserId)) {
-      isMatch = true;
-      if (!currentUser.matches.includes(likedUserId)) {
-        currentUser.matches.push(likedUserId);
-      }
-      if (!likedUser.matches.includes(currentUserId)) {
-        likedUser.matches.push(currentUserId);
-      }
-      await likedUser.save();
+    if (user) {
+      res.status(201).json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        gender: user.gender,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(400).json({ message: "Invalid user data" });
     }
-
-    await currentUser.save();
-
-    res.json({
-      message: isMatch ? 'Profile matched' : 'Profile liked successfully',
-      match: isMatch
-    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-const getSentLikes = async (req, res) => {
+const loginUser = async (req, res) => {
   try {
-    const currentUser = await User.findById(req.user._id);
-    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id }).distinct('_id');
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
 
-    const excludeIds = [
-      ...currentUser.matches,
-      ...currentUser.blockedUsers,
-      ...usersWhoBlockedMe
-    ];
-
-    const sentLikes = await User.find({
-      _id: { $in: currentUser.likes, $nin: excludeIds }
-    }).select('-password');
-
-    res.json(sentLikes);
+    if (user && (await bcrypt.compare(password, user.password))) {
+      res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401).json({ message: "Invalid email or password" });
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-const getMatches = async (req, res) => {
+const deleteAccount = async (req, res) => {
   try {
-    const currentUser = await User.findById(req.user._id);
-    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id }).distinct('_id');
+    const userId = req.user.id;
 
-    const excludeIds = [
-      ...currentUser.blockedUsers,
-      ...usersWhoBlockedMe
-    ];
+    const user = await User.findById(userId);
 
-    const matches = await User.find({
-      _id: { $in: currentUser.matches, $nin: excludeIds }
-    }).select('-password');
-
-    res.json(matches);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const getWhoLikedMe = async (req, res) => {
-  try {
-    const currentUser = await User.findById(req.user._id).populate('subscription.plan');
-
-    const isSubscribed = currentUser.subscription && 
-                        currentUser.subscription.isActive && 
-                        new Date(currentUser.subscription.endDate) > new Date();
-
-    const planName = currentUser.subscription?.plan?.name;
-    const canSeeWhoLikedMe = isSubscribed && (planName === 'Gold' || planName === 'Platinum');
-
-    if (!canSeeWhoLikedMe) {
-      return res.status(403).json({
-        message: "Seeing who liked you is available only on Gold and Platinum plans."
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
       });
     }
 
-    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id }).distinct('_id');
+    await User.findByIdAndDelete(userId);
 
-    const usersWhoLikedMe = await User.find({
-      likes: req.user._id,
-      _id: { 
-        $nin: [...currentUser.matches, ...currentUser.blockedUsers, ...usersWhoBlockedMe] 
-      }
-    }).select('-password');
-
-    res.json(usersWhoLikedMe);
+    res.status(200).json({
+      message: "Account deleted successfully",
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message,
+    });
   }
 };
 
-const blockUser = async (req, res) => {
+const deactivateAccount = async (req, res) => {
   try {
-    const { blockedUserId } = req.body;
-    const currentUserId = req.user._id;
+    const userId = req.user.id;
+    const { reason } = req.body;
 
-    if (currentUserId.toString() === blockedUserId) {
-      return res.status(400).json({ message: "You cannot block yourself" });
+    if (!reason) {
+      return res.status(400).json({
+        message: "Please provide reason for deactivating account",
+      });
     }
 
-    const userToBlock = await User.findById(blockedUserId);
-    if (!userToBlock) {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    user.isDeactivated = true;
+    user.deactivateReason = reason;
+    user.deactivatedAt = new Date();
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Account deactivated successfully",
+      reason: user.deactivateReason,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+const getProfileById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      message: "Profile fetched successfully",
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+const activateAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    user.isDeactivated = false;
+    user.deactivateReason = null;
+    user.deactivatedAt = null;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Account activated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+const hideProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { days } = req.body;
+
+    const allowedDays = [1, 7, 30];
+
+    if (!allowedDays.includes(Number(days))) {
+      return res.status(400).json({
+        message: "Please select only 1, 7 or 30 days",
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const hideUntil = new Date();
+    hideUntil.setDate(hideUntil.getDate() + Number(days));
+
+    user.isProfileHidden = true;
+    user.profileHiddenUntil = hideUntil;
+
+    await user.save();
+
+    res.status(200).json({
+      message: `Profile hidden for ${days} days`,
+      profileHiddenUntil: user.profileHiddenUntil,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+const unhideProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    user.isProfileHidden = false;
+    user.profileHiddenUntil = null;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Profile unhidden successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+const getMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
-    await User.findByIdAndUpdate(currentUserId, {
-      $addToSet: { blockedUsers: blockedUserId },
-      $pull: { likes: blockedUserId, matches: blockedUserId }
-    });
-
-    await User.findByIdAndUpdate(blockedUserId, {
-      $pull: { likes: currentUserId, matches: currentUserId }
-    });
-
-    res.json({ message: "User blocked successfully" });
+    res.status(200).json({ user });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-const unblockUser = async (req, res) => {
+const updateProfile = async (req, res) => {
   try {
-    const { unblockedUserId } = req.body;
-    const currentUserId = req.user._id;
+    const userId = req.user.id;
+    const updates = { ...req.body };
 
-    await User.findByIdAndUpdate(currentUserId, {
-      $pull: { blockedUsers: unblockedUserId }
+    delete updates.password;
+    delete updates.email;
+
+    if (req.files) {
+      if (req.files.profilePic && req.files.profilePic.length > 0) {
+        const file = req.files.profilePic[0];
+        const b64 = Buffer.from(file.buffer).toString("base64");
+        const dataURI = "data:" + file.mimetype + ";base64," + b64;
+        const result = await cloudinary.uploader.upload(dataURI, {
+          folder: "users",
+        });
+        updates.profilePic = result.secure_url;
+      }
+
+      if (req.files.additionalPhotos && req.files.additionalPhotos.length > 0) {
+        const additionalPhotoUrls = [];
+        for (const file of req.files.additionalPhotos) {
+          const b64 = Buffer.from(file.buffer).toString("base64");
+          const dataURI = "data:" + file.mimetype + ";base64," + b64;
+          const result = await cloudinary.uploader.upload(dataURI, {
+            folder: "users",
+          });
+          additionalPhotoUrls.push(result.secure_url);
+        }
+        updates.additionalPhotos = additionalPhotoUrls;
+      }
+    }
+
+    if (updates.interests) {
+      try {
+        updates.interests =
+          typeof updates.interests === "string"
+            ? JSON.parse(updates.interests)
+            : updates.interests;
+      } catch (e) {
+        updates.interests =
+          typeof updates.interests === "string"
+            ? updates.interests.split(",")
+            : updates.interests;
+      }
+    }
+
+    if (updates.lifestyle) {
+      try {
+        updates.lifestyle =
+          typeof updates.lifestyle === "string"
+            ? JSON.parse(updates.lifestyle)
+            : updates.lifestyle;
+      } catch (e) {
+        updates.lifestyle =
+          typeof updates.lifestyle === "string"
+            ? updates.lifestyle.split(",")
+            : updates.lifestyle;
+      }
+    }
+
+    if (updates.languages) {
+      try {
+        updates.languages =
+          typeof updates.languages === "string"
+            ? JSON.parse(updates.languages)
+            : updates.languages;
+      } catch (e) {
+        updates.languages =
+          typeof updates.languages === "string"
+            ? updates.languages.split(",")
+            : updates.languages;
+      }
+    }
+
+    if (updates.agePreference) {
+      try {
+        updates.agePreference =
+          typeof updates.agePreference === "string"
+            ? JSON.parse(updates.agePreference)
+            : updates.agePreference;
+      } catch (e) {}
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(userId, updates, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
+
+    res.status(200).json({
+      message: "Profile updated successfully",
+      user: updatedUser,
     });
-
-    res.json({ message: "User unblocked successfully" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const getBlockedUsers = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).populate('blockedUsers', '-password');
-    res.json(user.blockedUsers);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = {
-  getFeedProfiles,
-  filterProfiles,
-  likeProfile,
-  getSentLikes,
-  getMatches,
-  getWhoLikedMe,
-  blockUser,
-  unblockUser,
-  getBlockedUsers
+  registerUser,
+  loginUser,
+  getMe,
+  updateProfile,
+  deleteAccount,
+  deactivateAccount,
+  activateAccount,
+  getProfileById,
+  hideProfile,
+  unhideProfile,
 };
