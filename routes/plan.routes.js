@@ -3,7 +3,7 @@ const router = express.Router();
 const { getPlans, subscribePlan, getUserSubscription } = require('../controllers/plan.controller');
 const authMiddleware = require('../middleware/authMiddleware');
 
-router.get('/', getPlans);
+router.get('/allplans', getPlans);
 router.post('/subscribe', authMiddleware, subscribePlan);
 router.get('/my-subscription', authMiddleware, getUserSubscription);
 
