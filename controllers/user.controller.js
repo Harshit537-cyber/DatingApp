@@ -181,7 +181,6 @@ const loginUser = async (req, res) => {
 const deleteAccount = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const user = await User.findById(userId);
 
     if (!user) {
@@ -241,7 +240,6 @@ const deactivateAccount = async (req, res) => {
 const getProfileById = async (req, res) => {
   try {
     const { id } = req.params;
-
     const user = await User.findById(id).select("-password");
 
     if (!user) {
@@ -264,7 +262,6 @@ const getProfileById = async (req, res) => {
 const activateAccount = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const user = await User.findById(userId);
 
     if (!user) {
@@ -293,7 +290,6 @@ const hideProfile = async (req, res) => {
   try {
     const userId = req.user.id;
     const { days } = req.body;
-
     const allowedDays = [1, 7, 30];
 
     if (!allowedDays.includes(Number(days))) {
@@ -332,7 +328,6 @@ const hideProfile = async (req, res) => {
 const unhideProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const user = await User.findById(userId);
 
     if (!user) {
@@ -466,6 +461,78 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const getFeedProfiles = async (req, res) => {
+  try {
+    res.status(200).json({ message: "Feed profiles fetched" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const filterProfiles = async (req, res) => {
+  try {
+    res.status(200).json({ message: "Profiles filtered" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const likeProfile = async (req, res) => {
+  try {
+    res.status(200).json({ message: "Profile liked" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getSentLikes = async (req, res) => {
+  try {
+    res.status(200).json({ message: "Sent likes fetched" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getMatches = async (req, res) => {
+  try {
+    res.status(200).json({ message: "Matches fetched" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getWhoLikedMe = async (req, res) => {
+  try {
+    res.status(200).json({ message: "Who liked me fetched" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const blockUser = async (req, res) => {
+  try {
+    res.status(200).json({ message: "User blocked" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const unblockUser = async (req, res) => {
+  try {
+    res.status(200).json({ message: "User unblocked" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getBlockedUsers = async (req, res) => {
+  try {
+    res.status(200).json({ message: "Blocked users fetched" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -477,4 +544,13 @@ module.exports = {
   getProfileById,
   hideProfile,
   unhideProfile,
+  getFeedProfiles,
+  filterProfiles,
+  likeProfile,
+  getSentLikes,
+  getMatches,
+  getWhoLikedMe,
+  blockUser,
+  unblockUser,
+  getBlockedUsers
 };
