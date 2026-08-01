@@ -208,9 +208,34 @@ const rewindLastAction = async (req, res) => {
   }
 };
 
+const getMatches = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId).populate({
+      path: "matches",
+      select:
+        "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height",
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: user.matches.length,
+      matches: user.matches,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getSwipeProfiles,
   likeProfile,
   passProfile,
   rewindLastAction,
+  getMatches,
 };
