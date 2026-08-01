@@ -9,6 +9,27 @@ const generateToken = (id) => {
   });
 };
 
+const parseAgePreference = (input) => {
+  if (!input) return { min: 18, max: 80 };
+  if (typeof input === "object") return input;
+
+  try {
+    return JSON.parse(input);
+  } catch (e) {
+    if (typeof input === "string") {
+      if (input.includes("-")) {
+        const [min, max] = input.split("-").map(Number);
+        return { min: min || 18, max: max || 80 };
+      }
+      if (input.includes("+")) {
+        const min = parseInt(input);
+        return { min: min || 50, max: 100 };
+      }
+    }
+  }
+  return { min: 18, max: 80 };
+};
+
 const registerUser = async (req, res) => {
   try {
     const {
@@ -29,6 +50,8 @@ const registerUser = async (req, res) => {
       distancePreference,
       agePreference,
       interests,
+      lifestyle,
+      languages,
     } = req.body;
 
     const userExists = await User.findOne({ email });
@@ -69,18 +92,6 @@ const registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    let parsedAgePreference;
-    if (agePreference) {
-      try {
-        parsedAgePreference =
-          typeof agePreference === "string"
-            ? JSON.parse(agePreference)
-            : agePreference;
-      } catch (e) {
-        parsedAgePreference = undefined;
-      }
-    }
-
     let parsedInterests = [];
     if (interests) {
       try {
@@ -89,6 +100,28 @@ const registerUser = async (req, res) => {
       } catch (e) {
         parsedInterests =
           typeof interests === "string" ? interests.split(",") : [];
+      }
+    }
+
+    let parsedLifestyle = [];
+    if (lifestyle) {
+      try {
+        parsedLifestyle =
+          typeof lifestyle === "string" ? JSON.parse(lifestyle) : lifestyle;
+      } catch (e) {
+        parsedLifestyle =
+          typeof lifestyle === "string" ? lifestyle.split(",") : [];
+      }
+    }
+
+    let parsedLanguages = [];
+    if (languages) {
+      try {
+        parsedLanguages =
+          typeof languages === "string" ? JSON.parse(languages) : languages;
+      } catch (e) {
+        parsedLanguages =
+          typeof languages === "string" ? languages.split(",") : [];
       }
     }
 
@@ -106,14 +139,16 @@ const registerUser = async (req, res) => {
       livingIn,
       height: height ? Number(height) : null,
       interests: parsedInterests,
+      lifestyle: parsedLifestyle,
+      languages: parsedLanguages,
       profilePic: profilePicUrl,
       additionalPhotos: additionalPhotoUrls,
       location: {
         type: "Point",
         coordinates: [Number(longitude) || 0, Number(latitude) || 0],
       },
-      distancePreference: distancePreference ? Number(distancePreference) : 50,
-      ...(parsedAgePreference && { agePreference: parsedAgePreference }),
+      distancePreference: distancePreference ? Number(distancePreference) : 25,
+      agePreference: parseAgePreference(agePreference),
     });
 
     if (user) {
@@ -151,29 +186,25 @@ const loginUser = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 const deleteAccount = async (req, res) => {
   try {
-    const userId = req.user.id; // JWT middleware se milega
+    const userId = req.user.id;
 
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     await User.findByIdAndDelete(userId);
 
-    res.status(200).json({
-      message: "Account deleted successfully",
-    });
+    res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
 const deactivateAccount = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -188,9 +219,7 @@ const deactivateAccount = async (req, res) => {
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     user.isDeactivated = true;
@@ -204,11 +233,10 @@ const deactivateAccount = async (req, res) => {
       reason: user.deactivateReason,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
 const getProfileById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -216,9 +244,7 @@ const getProfileById = async (req, res) => {
     const user = await User.findById(id).select("-password");
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     res.status(200).json({
@@ -226,11 +252,10 @@ const getProfileById = async (req, res) => {
       user,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
 const activateAccount = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -238,9 +263,7 @@ const activateAccount = async (req, res) => {
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     user.isDeactivated = false;
@@ -249,22 +272,17 @@ const activateAccount = async (req, res) => {
 
     await user.save();
 
-    res.status(200).json({
-      message: "Account activated successfully",
-    });
+    res.status(200).json({ message: "Account activated successfully" });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
 const hideProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const { days } = req.body;
 
-    // Allowed hide duration
     const allowedDays = [1, 7, 30];
 
     if (!allowedDays.includes(Number(days))) {
@@ -276,13 +294,10 @@ const hideProfile = async (req, res) => {
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     const hideUntil = new Date();
-
     hideUntil.setDate(hideUntil.getDate() + Number(days));
 
     user.isProfileHidden = true;
@@ -295,11 +310,10 @@ const hideProfile = async (req, res) => {
       profileHiddenUntil: user.profileHiddenUntil,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
 const unhideProfile = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -307,9 +321,7 @@ const unhideProfile = async (req, res) => {
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     user.isProfileHidden = false;
@@ -317,13 +329,9 @@ const unhideProfile = async (req, res) => {
 
     await user.save();
 
-    res.status(200).json({
-      message: "Profile unhidden successfully",
-    });
+    res.status(200).json({ message: "Profile unhidden successfully" });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -346,6 +354,23 @@ const updateProfile = async (req, res) => {
 
     delete updates.password;
     delete updates.email;
+
+    if (updates.longitude !== undefined && updates.latitude !== undefined) {
+      updates.location = {
+        type: "Point",
+        coordinates: [Number(updates.longitude), Number(updates.latitude)],
+      };
+      delete updates.longitude;
+      delete updates.latitude;
+    }
+
+    if (updates.distancePreference) {
+      updates.distancePreference = Number(updates.distancePreference);
+    }
+
+    if (updates.agePreference) {
+      updates.agePreference = parseAgePreference(updates.agePreference);
+    }
 
     if (req.files) {
       if (req.files.profilePic && req.files.profilePic.length > 0) {
@@ -386,13 +411,32 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    if (updates.agePreference) {
+    if (updates.lifestyle) {
       try {
-        updates.agePreference =
-          typeof updates.agePreference === "string"
-            ? JSON.parse(updates.agePreference)
-            : updates.agePreference;
-      } catch (e) {}
+        updates.lifestyle =
+          typeof updates.lifestyle === "string"
+            ? JSON.parse(updates.lifestyle)
+            : updates.lifestyle;
+      } catch (e) {
+        updates.lifestyle =
+          typeof updates.lifestyle === "string"
+            ? updates.lifestyle.split(",")
+            : updates.lifestyle;
+      }
+    }
+
+    if (updates.languages) {
+      try {
+        updates.languages =
+          typeof updates.languages === "string"
+            ? JSON.parse(updates.languages)
+            : updates.languages;
+      } catch (e) {
+        updates.languages =
+          typeof updates.languages === "string"
+            ? updates.languages.split(",")
+            : updates.languages;
+      }
     }
 
     const updatedUser = await User.findByIdAndUpdate(userId, updates, {
