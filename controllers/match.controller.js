@@ -3,6 +3,10 @@ const User = require("../models/user.model");
 const getSwipeProfiles = async (req, res) => {
   try {
     const userId = req.user.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
     const currentUser = await User.findById(userId);
 
     if (!currentUser) {
@@ -34,10 +38,22 @@ const getSwipeProfiles = async (req, res) => {
       query.gender = targetGender;
     }
 
-    const profiles = await User.find(query).select("-password");
+    const profiles = await User.find(query)
+      .select(
+        "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests height"
+      )
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const totalProfiles = await User.countDocuments(query);
 
     res.status(200).json({
       success: true,
+      page,
+      limit,
+      totalProfiles,
+      totalPages: Math.ceil(totalProfiles / limit),
       count: profiles.length,
       profiles,
     });
