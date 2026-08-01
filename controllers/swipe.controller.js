@@ -8,6 +8,7 @@ const superLikeUser = async (req, res) => {
 
         if (userId.toString() === targetUserId) {
             return res.status(400).json({
+                success: false,
                 message: "You cannot super like yourself"
             });
         }
@@ -16,6 +17,7 @@ const superLikeUser = async (req, res) => {
 
         if (!currentUser) {
             return res.status(404).json({
+                success: false,
                 message: "User not found"
             });
         }
@@ -26,6 +28,7 @@ const superLikeUser = async (req, res) => {
 
         if (!isSubscribed) {
             return res.status(403).json({
+                success: false,
                 message: "Super Likes are only available for subscribed users. Please upgrade your plan."
             });
         }
@@ -53,6 +56,7 @@ const superLikeUser = async (req, res) => {
 
             if (superLikesToday >= dailyLimit) {
                 return res.status(400).json({
+                    success: false,
                     message: `Daily Super Like limit reached for your ${planName} plan (${dailyLimit}/day)`
                 });
             }
@@ -62,6 +66,7 @@ const superLikeUser = async (req, res) => {
 
         if (!targetUser) {
             return res.status(404).json({
+                success: false,
                 message: "User not found"
             });
         }
@@ -73,6 +78,7 @@ const superLikeUser = async (req, res) => {
 
         if (alreadyLiked) {
             return res.status(400).json({
+                success: false,
                 message: "Already swiped this user"
             });
         }
@@ -84,12 +90,14 @@ const superLikeUser = async (req, res) => {
         });
 
         res.status(201).json({
+            success: true,
             message: "Super Like sent successfully",
             swipe
         });
 
     } catch (error) {
         res.status(500).json({
+            success: false,
             message: error.message
         });
     }
