@@ -399,6 +399,180 @@ const getNewMatches = async (req, res) => {
   }
 };
 
+
+const getWhoLikedMe = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const currentUser = await User.findById(userId);
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to see who liked you",
+      });
+    }
+
+    const excludedUserIds = [
+      ...(currentUser.matches || []),
+      ...(currentUser.blockedUsers || []),
+    ];
+
+    const usersWhoLikedMe = await User.find({
+      likes: userId,
+      _id: { $nin: excludedUserIds },
+      isDeactivated: false,
+      isProfileHidden: false,
+    })
+      .select(
+        "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified"
+      )
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: usersWhoLikedMe.length,
+      users: usersWhoLikedMe,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+const getWhoLikedMeFiltered = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const filter = req.query.filter || "all";
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const currentUser = await User.findById(userId);
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to see who liked you",
+      });
+    }
+
+    const excludedUserIds = [
+      ...(currentUser.matches || []),
+      ...(currentUser.blockedUsers || []),
+    ];
+
+    const baseQuery = {
+      likes: userId,
+      _id: { $nin: excludedUserIds },
+      isDeactivated: false,
+      isProfileHidden: false,
+    };
+
+    const totalWaitingMatches = await User.countDocuments(baseQuery);
+
+    const query = { ...baseQuery };
+    let sortOption = {};
+
+    if (filter === "recent") {
+      sortOption = { _id: -1 };
+    } else if (filter === "verified") {
+      query.isVerified = true;
+    } else if (filter === "nearby") {
+      if (
+        currentUser.location &&
+        currentUser.location.coordinates &&
+        currentUser.location.coordinates.length === 2 &&
+        (currentUser.location.coordinates[0] !== 0 ||
+          currentUser.location.coordinates[1] !== 0)
+      ) {
+        const radiusInRadians = (currentUser.distancePreference || 50) / 6378.1;
+        query.location = {
+          $geoWithin: {
+            $centerSphere: [currentUser.location.coordinates, radiusInRadians],
+          },
+        };
+      }
+    }
+
+    const users = await User.find(query)
+      .select("name age jobTitle profilePic isVerified location")
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      activeFilter: filter,
+      totalWaitingMatches,
+      count: users.length,
+      users,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const searchLikes = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { query } = req.query;
+
+    if (!query) {
+      return res.status(400).json({ message: "Search query is required" });
+    }
+
+    const currentUser = await User.findById(userId);
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to search likes",
+      });
+    }
+
+    const excludedUserIds = [
+      ...(currentUser.matches || []),
+      ...(currentUser.blockedUsers || []),
+    ];
+
+    const searchQuery = {
+      likes: userId,
+      _id: { $nin: excludedUserIds },
+      isDeactivated: false,
+      isProfileHidden: false,
+      $or: [
+        { name: { $regex: query, $options: "i" } },
+        { jobTitle: { $regex: query, $options: "i" } },
+      ],
+    };
+
+    const users = await User.find(searchQuery)
+      .select("name age jobTitle profilePic isVerified location")
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      users,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getSwipeProfiles,
   filterProfiles,
@@ -407,4 +581,7 @@ module.exports = {
   rewindLastAction,
   getMatches,
   getNewMatches,
+  getWhoLikedMe,
+  searchLikes,
+  getWhoLikedMeFiltered
 };

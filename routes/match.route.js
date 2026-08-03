@@ -9,6 +9,9 @@ const {
   rewindLastAction,
   getMatches,
   getNewMatches,
+  getWhoLikedMe,
+  getWhoLikedMeFiltered,
+  searchLikes
 } = require("../controllers/match.controller");
 
 router.get("/feed", protect, getSwipeProfiles);
@@ -18,5 +21,10 @@ router.post("/pass", protect, passProfile);
 router.post("/rewind", protect, rewindLastAction);
 router.get("/my-matches", protect, getMatches);
 router.get("/new-matches", protect, getNewMatches);
+
+router.get("/who-liked-me", protect, getWhoLikedMe);
+
+router.get("/who-liked-me/filter", protect, getWhoLikedMeFiltered);
+router.get("/search-likes", protect, searchLikes);
 
 module.exports = router;

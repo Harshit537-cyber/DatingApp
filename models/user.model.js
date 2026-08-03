@@ -175,6 +175,14 @@ const userSchema = new mongoose.Schema(
         enum: ["monthly", "annual"],
         default: "monthly",
       },
+      isOnline: {
+        type: Boolean,
+        default: false,
+      },
+      lastSeen: {
+        type: Date,
+        default: null,
+      },
       startDate: {
         type: Date,
         default: null,
@@ -191,7 +199,7 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 userSchema.index({ location: "2dsphere" });
