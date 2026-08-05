@@ -6,6 +6,8 @@ const reportRoutes = require("./routes/report.routes");
 const planRoutes = require("./routes/plan.routes");
 const swipeRoutes = require("./routes/swipe.routes");
 const adminRoutes = require("./routes/admin.routes");
+const adminUserRoutes = require("./routes/admin.routes");
+const adminPlanRoutes = require("./routes/adminPlan.route");
 const matchRoutes = require("./routes/match.route");
 const circleRoutes = require("./routes/circle.routes");
 
@@ -19,6 +21,8 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/swipes", swipeRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/admin/users-manage", adminUserRoutes);
+app.use("/api/admin/plans-manage", adminPlanRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/circle", circleRoutes);
 
