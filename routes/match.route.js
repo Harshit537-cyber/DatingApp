@@ -11,7 +11,8 @@ const {
   getNewMatches,
   getWhoLikedMe,
   getWhoLikedMeFiltered,
-  searchLikes
+  searchLikes,
+  activateBoost
 } = require("../controllers/match.controller");
 
 router.get("/feed", protect, getSwipeProfiles);
@@ -26,5 +27,7 @@ router.get("/who-liked-me", protect, getWhoLikedMe);
 
 router.get("/who-liked-me/filter", protect, getWhoLikedMeFiltered);
 router.get("/search-likes", protect, searchLikes);
+
+router.post("/boost", protect, activateBoost);
 
 module.exports = router;

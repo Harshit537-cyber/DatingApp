@@ -63,6 +63,7 @@ const getSwipeProfiles = async (req, res) => {
       .select(
         "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified"
       )
+      .sort({ boostUntil: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
@@ -204,6 +205,7 @@ const filterProfiles = async (req, res) => {
       .select(
         "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified"
       )
+      .sort({ boostUntil: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
@@ -399,7 +401,6 @@ const getNewMatches = async (req, res) => {
   }
 };
 
-
 const getWhoLikedMe = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -441,7 +442,6 @@ const getWhoLikedMe = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 const getWhoLikedMeFiltered = async (req, res) => {
   try {
@@ -573,6 +573,41 @@ const searchLikes = async (req, res) => {
   }
 };
 
+const activateBoost = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const currentUser = await User.findById(userId);
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (currentUser.boostsAvailable <= 0) {
+      return res.status(400).json({ message: "No boosts available" });
+    }
+
+    const now = new Date();
+    if (currentUser.boostUntil && currentUser.boostUntil > now) {
+      return res.status(400).json({ message: "Boost is already active" });
+    }
+
+    const boostUntil = new Date(now.getTime() + 30 * 60000);
+
+    currentUser.boostsAvailable -= 1;
+    currentUser.boostUntil = boostUntil;
+    await currentUser.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Boost activated successfully",
+      boostUntil,
+      boostsAvailable: currentUser.boostsAvailable,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getSwipeProfiles,
   filterProfiles,
@@ -583,5 +618,6 @@ module.exports = {
   getNewMatches,
   getWhoLikedMe,
   searchLikes,
-  getWhoLikedMeFiltered
+  getWhoLikedMeFiltered,
+  activateBoost,
 };

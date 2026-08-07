@@ -93,6 +93,15 @@ const userSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    boostsAvailable: {
+      type: Number,
+      default: 1,
+    },
+    boostUntil: {
+      type: Date,
+      default: null,
+    },
+
     location: {
       type: {
         type: String,
