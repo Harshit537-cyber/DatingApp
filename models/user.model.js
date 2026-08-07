@@ -104,6 +104,10 @@ const userSchema = new mongoose.Schema(
         default: [0, 0],
       },
     },
+    isBanned: {
+    type: Boolean,
+    default: false
+},
     distancePreference: {
       type: Number,
       default: 50,

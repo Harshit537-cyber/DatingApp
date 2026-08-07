@@ -2,6 +2,7 @@ const Admin = require("../models/admin.model");
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const exceljs = require("exceljs");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -173,6 +174,116 @@ const deleteUserByAdmin = async (req, res) => {
   }
 };
 
+const getDashboardStats = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [totalUsers, totalNewUsers, maleUsers, femaleUsers] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+      User.countDocuments({ gender: { $regex: /^male$/i } }),
+      User.countDocuments({ gender: { $regex: /^female$/i } })
+    ]);
+
+    res.status(200).json({
+      totalUsers,
+      totalNewUsers,
+      maleUsers,
+      femaleUsers
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+
+
+const toggleUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.isBlocked = !user.isBlocked;
+    await user.save();
+
+    res.status(200).json({
+      message: `User ${user.isBlocked ? "blocked" : "unblocked"} successfully`,
+      isBlocked: user.isBlocked,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+const getUsersByGender = async (req, res) => {
+  try {
+    const { gender } = req.params;
+
+    const users = await User.find({
+      gender: { $regex: new RegExp(`^${gender}$`, "i") }
+    }).select("-password");
+
+    res.status(200).json({
+      count: users.length,
+      users,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+const exportUsersToExcel = async (req, res) => {
+  try {
+    const users = await User.find().select("-password").lean();
+
+    const workbook = new exceljs.Workbook();
+    const worksheet = workbook.addWorksheet("Users");
+
+    worksheet.columns = [
+      { header: "ID", key: "_id", width: 30 },
+      { header: "Name", key: "name", width: 25 },
+      { header: "Email", key: "email", width: 30 },
+      { header: "Gender", key: "gender", width: 15 },
+      { header: "Age", key: "age", width: 10 },
+      { header: "Status", key: "isBlocked", width: 15 },
+      { header: "Created At", key: "createdAt", width: 25 }
+    ];
+
+    users.forEach((user) => {
+      worksheet.addRow({
+        _id: user._id ? user._id.toString() : "",
+        name: user.name || "",
+        email: user.email || "",
+        gender: user.gender || "",
+        age: user.age || "",
+        isBlocked: user.isBlocked ? "Blocked" : "Active",
+        createdAt: user.createdAt ? new Date(user.createdAt).toLocaleString() : ""
+      });
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=users_data.xlsx"
+    );
+
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
 module.exports = {
   registerAdmin,
   loginAdmin,
@@ -182,4 +293,8 @@ module.exports = {
   getUserById,
   updateUserByAdmin,
   deleteUserByAdmin,
+  getDashboardStats,
+  toggleUserStatus,
+  getUsersByGender,
+  exportUsersToExcel
 };

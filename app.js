@@ -10,6 +10,8 @@ const adminUserRoutes = require("./routes/admin.routes");
 const adminPlanRoutes = require("./routes/adminPlan.route");
 const matchRoutes = require("./routes/match.route");
 const circleRoutes = require("./routes/circle.routes");
+const adminNotificationRoutes = require("./routes/admin.notification.routes");
+const userNotificationRoutes = require("./routes/user.notification.routes");
 
 const app = express();
 
@@ -25,5 +27,7 @@ app.use("/api/admin/users-manage", adminUserRoutes);
 app.use("/api/admin/plans-manage", adminPlanRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/circle", circleRoutes);
+app.use("/api/admin/notifications", adminNotificationRoutes);
+app.use("/api/notifications", userNotificationRoutes);
 
 module.exports = app;
