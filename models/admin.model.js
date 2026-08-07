@@ -14,6 +14,12 @@ const adminSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    phone: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
     password: {
       type: String,
       required: true,
@@ -25,6 +31,14 @@ const adminSchema = new mongoose.Schema(
     permissions: {
       type: [String],
       default: ["manage_users", "delete_users"],
+    },
+    otp: {
+      type: String,
+      default: null,
+    },
+    otpExpires: {
+      type: Date,
+      default: null,
     },
   },
   {

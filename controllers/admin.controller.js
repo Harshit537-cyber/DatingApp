@@ -12,11 +12,11 @@ const generateToken = (id) => {
 
 const registerAdmin = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, phone, password } = req.body;
 
-    const adminExists = await Admin.findOne({ email });
+    const adminExists = await Admin.findOne({ $or: [{ email }, { phone }] });
     if (adminExists) {
-      return res.status(400).json({ message: "Admin already exists" });
+      return res.status(400).json({ message: "Admin with this email or phone already exists" });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -25,6 +25,7 @@ const registerAdmin = async (req, res) => {
     const admin = await Admin.create({
       name,
       email,
+      phone,
       password: hashedPassword,
     });
 
@@ -33,6 +34,7 @@ const registerAdmin = async (req, res) => {
         _id: admin._id,
         name: admin.name,
         email: admin.email,
+        phone: admin.phone,
         role: admin.role,
         token: generateToken(admin._id),
       });
@@ -54,12 +56,93 @@ const loginAdmin = async (req, res) => {
         _id: admin._id,
         name: admin.name,
         email: admin.email,
+        phone: admin.phone,
         role: admin.role,
         token: generateToken(admin._id),
       });
     } else {
       res.status(401).json({ message: "Invalid email or password" });
     }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const sendOtp = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ message: "Mobile number is required" });
+    }
+
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiryTime = new Date(Date.now() + 10 * 60 * 1000);
+
+    let admin = await Admin.findOne({ phone });
+
+    if (!admin) {
+      admin = new Admin({
+        name: "Admin User",
+        email: `${phone}@admin.com`,
+        phone: phone,
+        password: "defaultpassword123",
+      });
+    }
+
+    admin.otp = generatedOtp;
+    admin.otpExpires = otpExpiryTime;
+    await admin.save();
+
+    res.status(200).json({
+      message: "OTP sent successfully",
+      phone: phone,
+      otp: generatedOtp,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const verifyOtp = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+
+    if (!phone || !otp) {
+      return res.status(400).json({ message: "Mobile number and OTP are required" });
+    }
+
+    const admin = await Admin.findOne({ phone });
+
+    if (!admin) {
+      return res.status(404).json({ message: "Mobile number not found" });
+    }
+
+    if (!admin.otp || admin.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (admin.otpExpires < new Date()) {
+      return res.status(400).json({ message: "OTP has expired" });
+    }
+
+    admin.otp = null;
+    admin.otpExpires = null;
+    await admin.save();
+
+    const token = generateToken(admin._id);
+
+    res.status(200).json({
+      message: "OTP verified successfully",
+      token,
+      admin: {
+        _id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        phone: admin.phone,
+        role: admin.role,
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -182,21 +265,19 @@ const getDashboardStats = async (req, res) => {
       User.countDocuments(),
       User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
       User.countDocuments({ gender: { $regex: /^male$/i } }),
-      User.countDocuments({ gender: { $regex: /^female$/i } })
+      User.countDocuments({ gender: { $regex: /^female$/i } }),
     ]);
 
     res.status(200).json({
       totalUsers,
       totalNewUsers,
       maleUsers,
-      femaleUsers
+      femaleUsers,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-}
-
-
+};
 
 const toggleUserStatus = async (req, res) => {
   try {
@@ -219,13 +300,12 @@ const toggleUserStatus = async (req, res) => {
   }
 };
 
-
 const getUsersByGender = async (req, res) => {
   try {
     const { gender } = req.params;
 
     const users = await User.find({
-      gender: { $regex: new RegExp(`^${gender}$`, "i") }
+      gender: { $regex: new RegExp(`^${gender}$`, "i") },
     }).select("-password");
 
     res.status(200).json({
@@ -236,7 +316,6 @@ const getUsersByGender = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 const exportUsersToExcel = async (req, res) => {
   try {
@@ -252,7 +331,7 @@ const exportUsersToExcel = async (req, res) => {
       { header: "Gender", key: "gender", width: 15 },
       { header: "Age", key: "age", width: 10 },
       { header: "Status", key: "isBlocked", width: 15 },
-      { header: "Created At", key: "createdAt", width: 25 }
+      { header: "Created At", key: "createdAt", width: 25 },
     ];
 
     users.forEach((user) => {
@@ -263,7 +342,7 @@ const exportUsersToExcel = async (req, res) => {
         gender: user.gender || "",
         age: user.age || "",
         isBlocked: user.isBlocked ? "Blocked" : "Active",
-        createdAt: user.createdAt ? new Date(user.createdAt).toLocaleString() : ""
+        createdAt: user.createdAt ? new Date(user.createdAt).toLocaleString() : "",
       });
     });
 
@@ -283,10 +362,11 @@ const exportUsersToExcel = async (req, res) => {
   }
 };
 
-
 module.exports = {
   registerAdmin,
   loginAdmin,
+  sendOtp,
+  verifyOtp,
   getAdminProfile,
   createUserByAdmin,
   getAllUsers,
@@ -296,5 +376,5 @@ module.exports = {
   getDashboardStats,
   toggleUserStatus,
   getUsersByGender,
-  exportUsersToExcel
+  exportUsersToExcel,
 };

@@ -4,6 +4,8 @@ const protect = require("../middleware/authMiddleware");
 const {
   registerAdmin,
   loginAdmin,
+  sendOtp,
+  verifyOtp,
   getAdminProfile,
   createUserByAdmin,
   getAllUsers,
@@ -13,16 +15,18 @@ const {
   toggleUserStatus,
   getDashboardStats,
   getUsersByGender,
-  exportUsersToExcel
+  exportUsersToExcel,
 } = require("../controllers/admin.controller");
 const {
   getAllReportsForAdmin,
   takeReportAction,
-
 } = require("../controllers/admin.report.controller");
 
 router.post("/register", registerAdmin);
 router.post("/login", loginAdmin);
+router.post("/send-otp", sendOtp);
+router.post("/verify-otp", verifyOtp);
+
 router.get("/profile", protect, getAdminProfile);
 
 router.post("/users", protect, createUserByAdmin);
@@ -36,10 +40,8 @@ router.patch("/users/:id/status", protect, toggleUserStatus);
 
 router.get("/reports", protect, getAllReportsForAdmin);
 router.patch("/reports/:reportId/action", protect, takeReportAction);
-router.get("/stats", protect, getDashboardStats);
 
 router.get("/users/gender/:gender", protect, getUsersByGender);
-
 router.get("/users/export/excel", protect, exportUsersToExcel);
 
 module.exports = router;
