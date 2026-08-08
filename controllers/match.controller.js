@@ -575,36 +575,54 @@ const searchLikes = async (req, res) => {
 
 const activateBoost = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized access" });
+    }
+
     const currentUser = await User.findById(userId);
 
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (currentUser.boostsAvailable <= 0) {
+    if (currentUser.isBanned || currentUser.isDeactivated) {
+      return res.status(403).json({ message: "Account is not active" });
+    }
+
+    if (!currentUser.boostsAvailable || currentUser.boostsAvailable <= 0) {
       return res.status(400).json({ message: "No boosts available" });
     }
 
     const now = new Date();
-    if (currentUser.boostUntil && currentUser.boostUntil > now) {
-      return res.status(400).json({ message: "Boost is already active" });
+    if (currentUser.boostUntil && new Date(currentUser.boostUntil) > now) {
+      return res.status(400).json({ 
+        message: "Boost is already active",
+        boostUntil: currentUser.boostUntil 
+      });
     }
 
-    const boostUntil = new Date(now.getTime() + 30 * 60000);
+    const BOOST_DURATION_MINUTES = 30;
+    const boostUntil = new Date(now.getTime() + BOOST_DURATION_MINUTES * 60 * 1000);
 
     currentUser.boostsAvailable -= 1;
     currentUser.boostUntil = boostUntil;
+
     await currentUser.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Boost activated successfully",
       boostUntil,
       boostsAvailable: currentUser.boostsAvailable,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ 
+      success: false,
+      message: "Internal server error", 
+      error: error.message 
+    });
   }
 };
 
