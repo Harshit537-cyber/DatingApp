@@ -1,6 +1,10 @@
 const Admin = require("../models/admin.model");
 const User = require("../models/user.model");
+
+const Support = require("../models/support.model");
+
 const bcrypt = require("bcryptjs");
+
 const jwt = require("jsonwebtoken");
 const exceljs = require("exceljs");
 
@@ -16,7 +20,9 @@ const registerAdmin = async (req, res) => {
 
     const adminExists = await Admin.findOne({ $or: [{ email }, { phone }] });
     if (adminExists) {
-      return res.status(400).json({ message: "Admin with this email or phone already exists" });
+      return res
+        .status(400)
+        .json({ message: "Admin with this email or phone already exists" });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -109,7 +115,9 @@ const verifyOtp = async (req, res) => {
     const { phone, otp } = req.body;
 
     if (!phone || !otp) {
-      return res.status(400).json({ message: "Mobile number and OTP are required" });
+      return res
+        .status(400)
+        .json({ message: "Mobile number and OTP are required" });
     }
 
     const admin = await Admin.findOne({ phone });
@@ -261,12 +269,13 @@ const getDashboardStats = async (req, res) => {
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const [totalUsers, totalNewUsers, maleUsers, femaleUsers] = await Promise.all([
-      User.countDocuments(),
-      User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
-      User.countDocuments({ gender: { $regex: /^male$/i } }),
-      User.countDocuments({ gender: { $regex: /^female$/i } }),
-    ]);
+    const [totalUsers, totalNewUsers, maleUsers, femaleUsers] =
+      await Promise.all([
+        User.countDocuments(),
+        User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+        User.countDocuments({ gender: { $regex: /^male$/i } }),
+        User.countDocuments({ gender: { $regex: /^female$/i } }),
+      ]);
 
     res.status(200).json({
       totalUsers,
@@ -342,21 +351,60 @@ const exportUsersToExcel = async (req, res) => {
         gender: user.gender || "",
         age: user.age || "",
         isBlocked: user.isBlocked ? "Blocked" : "Active",
-        createdAt: user.createdAt ? new Date(user.createdAt).toLocaleString() : "",
+        createdAt: user.createdAt
+          ? new Date(user.createdAt).toLocaleString()
+          : "",
       });
     });
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=users_data.xlsx"
+      "attachment; filename=users_data.xlsx",
     );
 
     await workbook.xlsx.write(res);
     res.status(200).end();
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getHelpRequests = async (req, res) => {
+  try {
+    const helpRequests = await Support.find()
+      .populate("user", "name email")
+      .sort({ createAt: -1 });
+
+    res.status(200).json({
+      count: helpRequests.length,
+      helpRequests,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const resolveHelpRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const helpRequest = await Support.findByIdAndUpdate(
+      id,
+      { status: "resolved" },
+      { new: true },
+    );
+
+    if (!helpRequest) {
+      return res.status(404).json({ message: "Help request not found" });
+    }
+    res.status(200).json({
+      message: "Help request resolved successfully",
+      helpRequest,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -377,4 +425,6 @@ module.exports = {
   toggleUserStatus,
   getUsersByGender,
   exportUsersToExcel,
+  getHelpRequests,
+  resolveHelpRequest
 };

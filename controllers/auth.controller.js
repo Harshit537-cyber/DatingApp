@@ -2,6 +2,7 @@ const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../config/cloudinary");
+const Support = require("../models/support.model");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -453,6 +454,33 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const submitHelpRequest = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { subject, message, category } = req.body;
+
+    if (!subject || !message) {
+      return res.status(400).json({
+        message: "Subject and message are required",
+      });
+    }
+
+    const helpRequest = await Support.create({
+      user: userId,
+      subject,
+      message,
+      category,
+    });
+
+    res.status(201).json({
+      message: "Help request submitted successfully",
+      helpRequest,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -464,4 +492,5 @@ module.exports = {
   getProfileById,
   hideProfile,
   unhideProfile,
+  submitHelpRequest
 };

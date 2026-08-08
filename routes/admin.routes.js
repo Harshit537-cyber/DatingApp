@@ -16,6 +16,8 @@ const {
   getDashboardStats,
   getUsersByGender,
   exportUsersToExcel,
+  getHelpRequests,
+  resolveHelpRequest,
 } = require("../controllers/admin.controller");
 const {
   getAllReportsForAdmin,
@@ -40,6 +42,9 @@ router.patch("/users/:id/status", protect, toggleUserStatus);
 
 router.get("/reports", protect, getAllReportsForAdmin);
 router.patch("/reports/:reportId/action", protect, takeReportAction);
+
+router.get("/help-requests", protect, getHelpRequests);
+router.patch("/help-requests/:id/resolve", protect, resolveHelpRequest);
 
 router.get("/users/gender/:gender", protect, getUsersByGender);
 router.get("/users/export/excel", protect, exportUsersToExcel);

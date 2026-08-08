@@ -12,6 +12,7 @@ const {
   getProfileById,
   hideProfile,
   unhideProfile,
+  submitHelpRequest
 } = require("../controllers/auth.controller");
 const protect = require("../middleware/authMiddleware");
 
@@ -31,6 +32,8 @@ router.patch("/deactivate-account", protect, deactivateAccount);
 router.patch("/activate-account", protect, activateAccount);
 router.patch("/hide-profile", protect, hideProfile);
 router.patch("/unhide-profile", protect, unhideProfile);
+
+router.post("/help-support", protect, submitHelpRequest);
 
 router.get("/me", protect, getMe);
 router.put(
