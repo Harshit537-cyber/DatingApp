@@ -1,19 +1,9 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-const {
-    superLikeUser
-} = require('../controllers/swipe.controller');
+const { superLikeUser } = require("../controllers/swipe.controller");
+const { protect } = require("../middleware/authMiddleware");
 
-const protect = require('../middleware/authMiddleware');
-
-
-// Super Like API
-router.post(
-    '/super-like',
-    protect,
-    superLikeUser
-);
-
+router.post("/super-like", protect, superLikeUser);
 
 module.exports = router;

@@ -1,52 +1,50 @@
 const express = require("express");
 const router = express.Router();
-const protect = require("../middleware/authMiddleware");
+const multer = require("multer");
+
+const { protect } = require("../middleware/authMiddleware");
+
 const {
-  registerAdmin,
-  loginAdmin,
-  sendOtp,
-  verifyOtp,
-  getAdminProfile,
-  createUserByAdmin,
-  getAllUsers,
-  getUserById,
-  updateUserByAdmin,
-  deleteUserByAdmin,
-  toggleUserStatus,
-  getDashboardStats,
-  getUsersByGender,
-  exportUsersToExcel,
-  getHelpRequests,
-  resolveHelpRequest,
-} = require("../controllers/admin.controller");
-const {
-  getAllReportsForAdmin,
-  takeReportAction,
-} = require("../controllers/admin.report.controller");
+  registerUser,
+  loginUser,
+  getMe,
+  updateProfile,
+  deleteAccount,
+  deactivateAccount,
+  activateAccount,
+  getProfileById,
+  hideProfile,
+  unhideProfile,
+  submitHelpRequest,
+  getUserHelpRequests,
+  getHelpRequestById,
+} = require("../controllers/auth.controller");
 
-router.post("/register", registerAdmin);
-router.post("/login", loginAdmin);
-router.post("/send-otp", sendOtp);
-router.post("/verify-otp", verifyOtp);
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
-router.get("/profile", protect, getAdminProfile);
+const photoUploads = upload.fields([
+  { name: "profilePic", maxCount: 1 },
+  { name: "additionalPhotos", maxCount: 10 },
+]);
 
-router.post("/users", protect, createUserByAdmin);
-router.get("/users", protect, getAllUsers);
-router.get("/users/:id", protect, getUserById);
-router.put("/users/:id", protect, updateUserByAdmin);
-router.delete("/users/:id", protect, deleteUserByAdmin);
+router.post("/register", photoUploads, registerUser);
+router.post("/login", loginUser);
 
-router.get("/stats", protect, getDashboardStats);
-router.patch("/users/:id/status", protect, toggleUserStatus);
+router.use(protect);
 
-router.get("/reports", protect, getAllReportsForAdmin);
-router.patch("/reports/:reportId/action", protect, takeReportAction);
+router.get("/me", getMe);
+router.get("/profile/:id", getProfileById);
+router.put("/profile", photoUploads, updateProfile);
 
-router.get("/help-requests", protect, getHelpRequests);
-router.patch("/help-requests/:id/resolve", protect, resolveHelpRequest);
+router.delete("/account", deleteAccount);
+router.put("/deactivate", deactivateAccount);
+router.put("/activate", activateAccount);
+router.put("/hide", hideProfile);
+router.put("/unhide", unhideProfile);
 
-router.get("/users/gender/:gender", protect, getUsersByGender);
-router.get("/users/export/excel", protect, exportUsersToExcel);
+router.post("/support", submitHelpRequest);
+router.get("/support", getUserHelpRequests);
+router.get("/support/:id", getHelpRequestById);
 
 module.exports = router;
