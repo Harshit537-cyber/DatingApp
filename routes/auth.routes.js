@@ -1,49 +1,64 @@
 const express = require("express");
 const router = express.Router();
-const upload = require("../middleware/uploadMiddleware");
+const multer = require("multer");
+
+// Middleware Imports (Apne path ke hisab se adjust kar lein)
+const { protect } = require("../middleware/authMiddleware");
+
+// Controller Functions Import
 const {
   registerUser,
   loginUser,
-  deleteAccount,
-  updateProfile,
   getMe,
+  updateProfile,
+  deleteAccount,
   deactivateAccount,
   activateAccount,
   getProfileById,
   hideProfile,
   unhideProfile,
-  submitHelpRequest
-} = require("../controllers/auth.controller");
-const protect = require("../middleware/authMiddleware");
+  submitHelpRequest,
+  getUserHelpRequests,
+  getHelpRequestById,
+} = require("../controllers/auth.controller"); // Path apne folder structure ke hisab se check kar lein
 
-router.post(
-  "/register",
-  upload.fields([
-    { name: "profilePic", maxCount: 1 },
-    { name: "additionalPhotos", maxCount: 5 },
-  ]),
-  registerUser
-);
+// Multer Config (Memory Storage for Cloudinary Uploads)
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
+// File fields definition for Registration and Profile Update
+const photoUploads = upload.fields([
+  { name: "profilePic", maxCount: 1 },
+  { name: "additionalPhotos", maxCount: 10 },
+]);
+
+// ==========================================
+// PUBLIC ROUTES (No Login Required)
+// ==========================================
+router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
-router.get("/profile/:id", protect, getProfileById);
-router.delete("/delete-account", protect, deleteAccount);
-router.patch("/deactivate-account", protect, deactivateAccount);
-router.patch("/activate-account", protect, activateAccount);
-router.patch("/hide-profile", protect, hideProfile);
-router.patch("/unhide-profile", protect, unhideProfile);
 
-router.post("/help-support", protect, submitHelpRequest);
 
-router.get("/me", protect, getMe);
-router.put(
-  "/update-profile",
-  protect,
-  upload.fields([
-    { name: "profilePic", maxCount: 1 },
-    { name: "additionalPhotos", maxCount: 5 },
-  ]),
-  updateProfile
-);
+// ==========================================
+// PROTECTED ROUTES (Requires JWT Auth Token)
+// ==========================================
+router.use(protect); // Iske niche ke saare routes me 'protect' middleware chalega
+
+// Profile Routes
+router.get("/me", getMe);
+router.get("/profile/:id", getProfileById);
+router.put("/profile", photoUploads, updateProfile);
+
+// Account Settings Routes
+router.delete("/account", deleteAccount);
+router.put("/deactivate", deactivateAccount);
+router.put("/activate", activateAccount);
+router.put("/hide", hideProfile);
+router.put("/unhide", unhideProfile);
+
+// Help & Support Routes
+router.post("/support", submitHelpRequest);
+router.get("/support", getUserHelpRequests);
+router.get("/support/:id", getHelpRequestById);
 
 module.exports = router;

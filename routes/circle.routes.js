@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const protect = require("../middleware/authMiddleware");
+const {protect} = require("../middleware/authMiddleware");
 const upload = require("../middleware/uploadMiddleware");
 
 const { getCircleDashboard, connectWithUser } = require("../controllers/circle.controller");

@@ -191,7 +191,6 @@ const loginUser = async (req, res) => {
 const deleteAccount = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const user = await User.findById(userId);
 
     if (!user) {
@@ -241,7 +240,6 @@ const deactivateAccount = async (req, res) => {
 const getProfileById = async (req, res) => {
   try {
     const { id } = req.params;
-
     const user = await User.findById(id).select("-password");
 
     if (!user) {
@@ -260,7 +258,6 @@ const getProfileById = async (req, res) => {
 const activateAccount = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const user = await User.findById(userId);
 
     if (!user) {
@@ -318,7 +315,6 @@ const hideProfile = async (req, res) => {
 const unhideProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const user = await User.findById(userId);
 
     if (!user) {
@@ -481,6 +477,41 @@ const submitHelpRequest = async (req, res) => {
   }
 };
 
+const getUserHelpRequests = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const helpRequests = await Support.find({ user: userId }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      message: "Help requests fetched successfully",
+      count: helpRequests.length,
+      helpRequests,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getHelpRequestById = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const helpRequest = await Support.findOne({ _id: id, user: userId });
+
+    if (!helpRequest) {
+      return res.status(404).json({ message: "Help request not found" });
+    }
+
+    res.status(200).json({
+      message: "Help request fetched successfully",
+      helpRequest,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -492,5 +523,7 @@ module.exports = {
   getProfileById,
   hideProfile,
   unhideProfile,
-  submitHelpRequest
+  submitHelpRequest,
+  getUserHelpRequests,
+  getHelpRequestById,
 };

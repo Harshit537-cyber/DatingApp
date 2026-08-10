@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const protect = require("../middleware/authMiddleware");
+
+// Admin Middleware (अपनी फाइल लोकेशन के हिसाब से पाथ बदल लें)
+const { protect } = require("../middleware/authMiddleware");
+
+// Admin Controller Imports
 const {
   registerAdmin,
   loginAdmin,
@@ -12,8 +16,8 @@ const {
   getUserById,
   updateUserByAdmin,
   deleteUserByAdmin,
-  toggleUserStatus,
   getDashboardStats,
+  toggleUserStatus,
   getUsersByGender,
   exportUsersToExcel,
   getHelpRequests,
@@ -21,35 +25,31 @@ const {
   getAllUserSubscriptions,
   searchUser
 } = require("../controllers/admin.controller");
-const {
-  getAllReportsForAdmin,
-  takeReportAction,
-} = require("../controllers/admin.report.controller");
 
-router.post("/register", registerAdmin);
+// Public Admin Routes
+router.post("/register", registerAdmin); // No photoUploads here!
 router.post("/login", loginAdmin);
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
 
-router.get("/profile", protect, getAdminProfile);
+// Protected Admin Routes (Token required)
+router.use(protect);
 
-router.post("/users", protect, createUserByAdmin);
-router.get("/users", protect, getAllUsers);
-router.get("/users/:id", protect, getUserById);
-router.put("/users/:id", protect, updateUserByAdmin);
-router.delete("/users/:id", protect, deleteUserByAdmin);
+router.get("/profile", getAdminProfile);
+router.get("/stats", getDashboardStats);
 
-router.get("/stats", protect, getDashboardStats);
-router.patch("/users/:id/status", protect, toggleUserStatus);
+// User Management Routes by Admin
+router.post("/users", createUserByAdmin);
+router.get("/users", getAllUsers);
+router.get("/users/gender/:gender", getUsersByGender);
+router.get("/users/export", exportUsersToExcel);
+router.get("/users/:id", getUserById);
+router.put("/users/:id", updateUserByAdmin);
+router.delete("/users/:id", deleteUserByAdmin);
+router.patch("/users/:id/toggle-status", toggleUserStatus);
 
-router.get("/reports", protect, getAllReportsForAdmin);
-router.patch("/reports/:reportId/action", protect, takeReportAction);
+// Support Routes
+router.get("/help-requests", getHelpRequests);
+router.patch("/help-requests/:id/resolve", resolveHelpRequest);
 
-router.get("/help-requests", protect, getHelpRequests);
-router.patch("/help-requests/:id/resolve", protect, resolveHelpRequest);
-
-router.get("/users/gender/:gender", protect, getUsersByGender);
-router.get("/users/export/excel", protect, exportUsersToExcel);
-router.get("/subscriptions",protect,getAllUserSubscriptions);
-router.get("/search-user",protect,searchUser);
 module.exports = router;
