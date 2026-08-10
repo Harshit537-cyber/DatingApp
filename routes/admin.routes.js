@@ -1,50 +1,53 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
 
+// Admin Middleware (अपनी फाइल लोकेशन के हिसाब से पाथ बदल लें)
 const { protect } = require("../middleware/authMiddleware");
 
+// Admin Controller Imports
 const {
-  registerUser,
-  loginUser,
-  getMe,
-  updateProfile,
-  deleteAccount,
-  deactivateAccount,
-  activateAccount,
-  getProfileById,
-  hideProfile,
-  unhideProfile,
-  submitHelpRequest,
-  getUserHelpRequests,
-  getHelpRequestById,
-} = require("../controllers/auth.controller");
+  registerAdmin,
+  loginAdmin,
+  sendOtp,
+  verifyOtp,
+  getAdminProfile,
+  createUserByAdmin,
+  getAllUsers,
+  getUserById,
+  updateUserByAdmin,
+  deleteUserByAdmin,
+  getDashboardStats,
+  toggleUserStatus,
+  getUsersByGender,
+  exportUsersToExcel,
+  getHelpRequests,
+  resolveHelpRequest,
+} = require("../controllers/admin.controller");
 
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+// Public Admin Routes
+router.post("/register", registerAdmin); // No photoUploads here!
+router.post("/login", loginAdmin);
+router.post("/send-otp", sendOtp);
+router.post("/verify-otp", verifyOtp);
 
-const photoUploads = upload.fields([
-  { name: "profilePic", maxCount: 1 },
-  { name: "additionalPhotos", maxCount: 10 },
-]);
-
-router.post("/register", photoUploads, registerUser);
-router.post("/login", loginUser);
-
+// Protected Admin Routes (Token required)
 router.use(protect);
 
-router.get("/me", getMe);
-router.get("/profile/:id", getProfileById);
-router.put("/profile", photoUploads, updateProfile);
+router.get("/profile", getAdminProfile);
+router.get("/stats", getDashboardStats);
 
-router.delete("/account", deleteAccount);
-router.put("/deactivate", deactivateAccount);
-router.put("/activate", activateAccount);
-router.put("/hide", hideProfile);
-router.put("/unhide", unhideProfile);
+// User Management Routes by Admin
+router.post("/users", createUserByAdmin);
+router.get("/users", getAllUsers);
+router.get("/users/gender/:gender", getUsersByGender);
+router.get("/users/export", exportUsersToExcel);
+router.get("/users/:id", getUserById);
+router.put("/users/:id", updateUserByAdmin);
+router.delete("/users/:id", deleteUserByAdmin);
+router.patch("/users/:id/toggle-status", toggleUserStatus);
 
-router.post("/support", submitHelpRequest);
-router.get("/support", getUserHelpRequests);
-router.get("/support/:id", getHelpRequestById);
+// Support Routes
+router.get("/help-requests", getHelpRequests);
+router.patch("/help-requests/:id/resolve", resolveHelpRequest);
 
 module.exports = router;

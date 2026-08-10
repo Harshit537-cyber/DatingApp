@@ -1,10 +1,7 @@
 const Admin = require("../models/admin.model");
 const User = require("../models/user.model");
-
 const Support = require("../models/support.model");
-
 const bcrypt = require("bcryptjs");
-
 const jwt = require("jsonwebtoken");
 const exceljs = require("exceljs");
 
@@ -17,6 +14,10 @@ const generateToken = (id) => {
 const registerAdmin = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ message: "Please enter all fields" });
+    }
 
     const adminExists = await Admin.findOne({ $or: [{ email }, { phone }] });
     if (adminExists) {
@@ -359,11 +360,11 @@ const exportUsersToExcel = async (req, res) => {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=users_data.xlsx",
+      "attachment; filename=users_data.xlsx"
     );
 
     await workbook.xlsx.write(res);
@@ -377,7 +378,7 @@ const getHelpRequests = async (req, res) => {
   try {
     const helpRequests = await Support.find()
       .populate("user", "name email")
-      .sort({ createAt: -1 });
+      .sort({ createdAt: -1 }); // Fixed typo here (createdAt)
 
     res.status(200).json({
       count: helpRequests.length,
@@ -395,7 +396,7 @@ const resolveHelpRequest = async (req, res) => {
     const helpRequest = await Support.findByIdAndUpdate(
       id,
       { status: "resolved" },
-      { new: true },
+      { new: true }
     );
 
     if (!helpRequest) {
@@ -426,5 +427,5 @@ module.exports = {
   getUsersByGender,
   exportUsersToExcel,
   getHelpRequests,
-  resolveHelpRequest
+  resolveHelpRequest,
 };
