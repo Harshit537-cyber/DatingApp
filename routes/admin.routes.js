@@ -18,6 +18,8 @@ const {
   exportUsersToExcel,
   getHelpRequests,
   resolveHelpRequest,
+  getAllUserSubscriptions,
+  searchUser
 } = require("../controllers/admin.controller");
 const {
   getAllReportsForAdmin,
@@ -48,5 +50,6 @@ router.patch("/help-requests/:id/resolve", protect, resolveHelpRequest);
 
 router.get("/users/gender/:gender", protect, getUsersByGender);
 router.get("/users/export/excel", protect, exportUsersToExcel);
-
+router.get("/subscriptions",protect,getAllUserSubscriptions);
+router.get("/search-user",protect,searchUser);
 module.exports = router;

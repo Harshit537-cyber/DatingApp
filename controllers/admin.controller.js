@@ -409,7 +409,96 @@ const resolveHelpRequest = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+const getAllUserSubscriptions = async (req, res) => {
+  try {
+    const users = await User.find({
+      "subscription.plan": { $exists: true, $ne: null }
+    })
+      .select("name email subscription")
+      .populate("subscription.plan", "name subtitle prices")
+      .sort({ "subscription.startDate": -1 });
 
+    const subscriptions = users.map((user) => ({
+      userId: user._id,
+      userName: user.name,
+      email: user.email,
+
+      plan: user.subscription?.plan
+        ? {
+            id: user.subscription.plan._id,
+            name: user.subscription.plan.name,
+            subtitle: user.subscription.plan.subtitle,
+            prices: user.subscription.plan.prices
+          }
+        : null,
+
+      billingCycle: user.subscription?.billingCycle,
+
+      startDate: user.subscription?.startDate,
+      endDate: user.subscription?.endDate,
+
+      isActive: user.subscription?.isActive
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: subscriptions.length,
+      subscriptions
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+const searchUser = async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    if (!search || !search.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a search value"
+      });
+    }
+
+    const searchRegex = new RegExp(search.trim(), "i");
+
+    const users = await User.find({
+      $or: [
+        { name: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex }
+      ]
+    })
+      .select("-password -otp -refreshToken")
+      .populate(
+        "subscription.plan",
+        "name subtitle prices features isPopular"
+      );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      users
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 module.exports = {
   registerAdmin,
   loginAdmin,
@@ -426,5 +515,7 @@ module.exports = {
   getUsersByGender,
   exportUsersToExcel,
   getHelpRequests,
-  resolveHelpRequest
+  resolveHelpRequest,
+  getAllUserSubscriptions,
+  searchUser
 };
