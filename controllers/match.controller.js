@@ -14,9 +14,9 @@ const getSwipeProfiles = async (req, res) => {
     }
 
     let targetGender;
-    if (currentUser.gender === "male") {
+    if (currentUser.gender && currentUser.gender.toLowerCase() === "male") {
       targetGender = "female";
-    } else if (currentUser.gender === "female") {
+    } else if (currentUser.gender && currentUser.gender.toLowerCase() === "female") {
       targetGender = "male";
     }
 
@@ -28,35 +28,15 @@ const getSwipeProfiles = async (req, res) => {
       ...(currentUser.blockedUsers || []),
     ];
 
-    const minAge = currentUser.agePreference?.min || 18;
-    const maxAge = currentUser.agePreference?.max || 100;
-
     const query = {
       _id: { $nin: excludedUserIds },
-      isDeactivated: false,
-      isProfileHidden: false,
-      age: { $gte: minAge, $lte: maxAge },
+      isDeactivated: { $ne: true },
+      isProfileHidden: { $ne: true },
     };
 
     if (targetGender) {
-      query.gender = targetGender;
-    }
-
-    if (
-      currentUser.location &&
-      currentUser.location.coordinates &&
-      currentUser.location.coordinates.length === 2 &&
-      (currentUser.location.coordinates[0] !== 0 ||
-        currentUser.location.coordinates[1] !== 0)
-    ) {
-      const radiusInRadians =
-        (currentUser.distancePreference || 50) / 6378.1;
-
-      query.location = {
-        $geoWithin: {
-          $centerSphere: [currentUser.location.coordinates, radiusInRadians],
-        },
-      };
+      // Case-insensitive search taaki 'Female' ya 'female' dono match ho jayein
+      query.gender = { $regex: new RegExp(`^${targetGender}$`, "i") };
     }
 
     const profiles = await User.find(query)
@@ -151,8 +131,8 @@ const filterProfiles = async (req, res) => {
 
     const query = {
       _id: { $nin: excludedUserIds },
-      isDeactivated: false,
-      isProfileHidden: false,
+      isDeactivated: { $ne: true },
+      isProfileHidden: { $ne: true },
       age: { $gte: parsedAgeMin, $lte: parsedAgeMax },
     };
 
@@ -425,8 +405,8 @@ const getWhoLikedMe = async (req, res) => {
     const usersWhoLikedMe = await User.find({
       likes: userId,
       _id: { $nin: excludedUserIds },
-      isDeactivated: false,
-      isProfileHidden: false,
+      isDeactivated: { $ne: true },
+      isProfileHidden: { $ne: true },
     })
       .select(
         "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified"
@@ -472,8 +452,8 @@ const getWhoLikedMeFiltered = async (req, res) => {
     const baseQuery = {
       likes: userId,
       _id: { $nin: excludedUserIds },
-      isDeactivated: false,
-      isProfileHidden: false,
+      isDeactivated: { $ne: true },
+      isProfileHidden: { $ne: true },
     };
 
     const totalWaitingMatches = await User.countDocuments(baseQuery);
@@ -551,8 +531,8 @@ const searchLikes = async (req, res) => {
     const searchQuery = {
       likes: userId,
       _id: { $nin: excludedUserIds },
-      isDeactivated: false,
-      isProfileHidden: false,
+      isDeactivated: { $ne: true },
+      isProfileHidden: { $ne: true },
       $or: [
         { name: { $regex: query, $options: "i" } },
         { jobTitle: { $regex: query, $options: "i" } },

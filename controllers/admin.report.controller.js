@@ -140,8 +140,44 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
+
+const getReportHistory = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = { status: REPORT_STATUS.RESOLVED };
+
+    const [reports, totalReports] = await Promise.all([
+      Report.find(query)
+        .populate("reportedBy", "name email profilePic")
+        .populate("reportedUser", "name email profilePic age bio isBanned")
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Report.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      count: reports.length,
+      pagination: {
+        totalReports,
+        currentPage: page,
+        totalPages: Math.ceil(totalReports / limit),
+      },
+      reports,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getAllReportsForAdmin,
   takeReportAction,
   getDashboardStats,
+  getReportHistory
 };

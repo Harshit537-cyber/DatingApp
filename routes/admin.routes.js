@@ -1,10 +1,8 @@
 const express = require("express");
 const router = express.Router();
 
-// Admin Middleware (अपनी फाइल लोकेशन के हिसाब से पाथ बदल लें)
 const { protect } = require("../middleware/authMiddleware");
 
-// Admin Controller Imports
 const {
   registerAdmin,
   loginAdmin,
@@ -22,21 +20,25 @@ const {
   exportUsersToExcel,
   getHelpRequests,
   resolveHelpRequest,
+
 } = require("../controllers/admin.controller");
 
-// Public Admin Routes
-router.post("/register", registerAdmin); // No photoUploads here!
+const {
+  getAllReportsForAdmin,
+  takeReportAction,
+    getReportHistory
+} = require("../controllers/admin.report.controller");
+
+router.post("/register", registerAdmin);
 router.post("/login", loginAdmin);
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
 
-// Protected Admin Routes (Token required)
 router.use(protect);
 
 router.get("/profile", getAdminProfile);
 router.get("/stats", getDashboardStats);
 
-// User Management Routes by Admin
 router.post("/users", createUserByAdmin);
 router.get("/users", getAllUsers);
 router.get("/users/gender/:gender", getUsersByGender);
@@ -46,8 +48,12 @@ router.put("/users/:id", updateUserByAdmin);
 router.delete("/users/:id", deleteUserByAdmin);
 router.patch("/users/:id/toggle-status", toggleUserStatus);
 
-// Support Routes
+router.get("/reports", getAllReportsForAdmin);
+router.patch("/reports/:reportId/action", takeReportAction);
+
 router.get("/help-requests", getHelpRequests);
 router.patch("/help-requests/:id/resolve", resolveHelpRequest);
+
+router.get("/reports/history", getReportHistory);
 
 module.exports = router;

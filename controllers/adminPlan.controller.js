@@ -1,4 +1,5 @@
 const Plan = require("../models/plan.model");
+const User = require("../models/user.model");
 
 const createPlanByAdmin = async (req, res) => {
   try {
@@ -128,10 +129,48 @@ const deletePlanByAdmin = async (req, res) => {
   }
 };
 
+const getUserSubscriptionsByAdmin = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = { plan: { $exists: true, $ne: null } };
+
+    const [users, totalUsers] = await Promise.all([
+      User.find(query)
+        .populate("plan")
+        .select("name email phone profilePic plan planStartDate planEndDate createdAt")
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      count: users.length,
+      pagination: {
+        totalUsers,
+        currentPage: page,
+        totalPages: Math.ceil(totalUsers / limit),
+      },
+      users,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   createPlanByAdmin,
   getAllPlansByAdmin,
   getPlanByIdByAdmin,
   updatePlanByAdmin,
   deletePlanByAdmin,
+  getUserSubscriptionsByAdmin
 };
