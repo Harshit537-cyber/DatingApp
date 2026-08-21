@@ -1,4 +1,224 @@
+const Plan = require("../models/plan.model");
 const User = require("../models/user.model");
+
+const getPlans = async (req, res) => {
+  try {
+    let plans = await Plan.find();
+
+    if (plans.length === 0) {
+      const defaultPlans = [
+        {
+          name: "Silver",
+          subtitle: "BASIC LUXURY",
+          prices: {
+            monthly: 14.99,
+            annual: 8.99,
+          },
+          features: [
+            { text: "Unlimited Likes", included: true },
+            { text: "5 Super Likes per day", included: true },
+            { text: "Profile Boosts", included: false },
+          ],
+          isPopular: false,
+        },
+        {
+          name: "Gold",
+          subtitle: "ENHANCED EXPERIENCE",
+          prices: {
+            monthly: 29.99,
+            annual: 17.99,
+          },
+          features: [
+            { text: "Unlimited Likes", included: true },
+            { text: "See Who Liked You", included: true },
+            { text: "1 Profile Boost per week", included: true },
+            { text: "Travel Mode enabled", included: true },
+          ],
+          isPopular: true,
+        },
+        {
+          name: "Platinum",
+          subtitle: "THE ULTIMATE SUITE",
+          prices: {
+            monthly: 59.99,
+            annual: 35.99,
+          },
+          features: [
+            { text: "Priority Messaging", included: true },
+            { text: "24/7 Concierge Support", included: true },
+            { text: "Elite Profile Badge", included: true },
+            { text: "Hidden Status Visibility", included: true },
+          ],
+          isPopular: false,
+        },
+      ];
+
+      plans = await Plan.insertMany(defaultPlans);
+    }
+
+    res.status(200).json({
+      success: true,
+      plans,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const addWalletBalance = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { amount } = req.body;
+
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid amount",
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.walletBalance = (user.walletBalance || 0) + Number(amount);
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Amount added to wallet successfully",
+      walletBalance: user.walletBalance,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const getWalletBalance = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      walletBalance: user.walletBalance || 0,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const subscribePlan = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { planId, billingCycle, paymentMethod } = req.body;
+
+    if (!["monthly", "annual"].includes(billingCycle)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid billing cycle. Must be monthly or annual.",
+      });
+    }
+
+    const plan = await Plan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: "Plan not found",
+      });
+    }
+
+    const planPrice =
+      billingCycle === "monthly" ? plan.prices.monthly : plan.prices.annual;
+    const user = await User.findById(userId);
+
+    if (paymentMethod === "wallet") {
+      const currentBalance = user.walletBalance || 0;
+      if (currentBalance < planPrice) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient wallet balance. Required: $${planPrice}, Available: $${currentBalance}`,
+        });
+      }
+      user.walletBalance = currentBalance - planPrice;
+    }
+
+    const startDate = new Date();
+    const endDate = new Date();
+    if (billingCycle === "monthly") {
+      endDate.setMonth(endDate.getMonth() + 1);
+    } else {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    }
+
+    user.subscription = {
+      plan: plan._id,
+      billingCycle,
+      startDate,
+      endDate,
+      isActive: true,
+    };
+
+    await user.save();
+    await user.populate("subscription.plan");
+
+    res.status(200).json({
+      success: true,
+      message: "Subscribed successfully",
+      walletBalance: user.walletBalance || 0,
+      subscription: user.subscription,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const getUserSubscription = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).populate("subscription.plan");
+
+    if (!user || !user.subscription || !user.subscription.isActive) {
+      return res.status(200).json({
+        success: true,
+        hasActiveSubscription: false,
+        subscription: null,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      hasActiveSubscription: true,
+      subscription: user.subscription,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
 const getSwipeProfiles = async (req, res) => {
   try {
@@ -7,7 +227,7 @@ const getSwipeProfiles = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
 
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
@@ -35,7 +255,6 @@ const getSwipeProfiles = async (req, res) => {
     };
 
     if (targetGender) {
-      // Case-insensitive search taaki 'Female' ya 'female' dono match ho jayein
       query.gender = { $regex: new RegExp(`^${targetGender}$`, "i") };
     }
 
@@ -84,7 +303,7 @@ const filterProfiles = async (req, res) => {
       isVerified,
     } = req.body;
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -219,7 +438,7 @@ const likeProfile = async (req, res) => {
       return res.status(400).json({ message: "You cannot like yourself" });
     }
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
     const targetUser = await User.findById(targetUserId);
 
     if (!currentUser || !targetUser) {
@@ -275,7 +494,7 @@ const passProfile = async (req, res) => {
       return res.status(400).json({ message: "Target user ID is required" });
     }
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -302,7 +521,7 @@ const rewindLastAction = async (req, res) => {
       return res.status(400).json({ message: "Target user ID is required" });
     }
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -335,7 +554,7 @@ const getMatches = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const user = await User.findById(userId).populate({
+    const user = await User.findById(userId).populate("subscription.plan").populate({
       path: "matches",
       select:
         "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified",
@@ -359,7 +578,7 @@ const getNewMatches = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const user = await User.findById(userId).populate({
+    const user = await User.findById(userId).populate("subscription.plan").populate({
       path: "matches",
       select:
         "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified createdAt",
@@ -384,7 +603,7 @@ const getNewMatches = async (req, res) => {
 const getWhoLikedMe = async (req, res) => {
   try {
     const userId = req.user.id;
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
 
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
@@ -431,7 +650,7 @@ const getWhoLikedMeFiltered = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
 
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
@@ -510,7 +729,7 @@ const searchLikes = async (req, res) => {
       return res.status(400).json({ message: "Search query is required" });
     }
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
 
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
@@ -558,26 +777,39 @@ const activateBoost = async (req, res) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized access" });
+      return res.status(401).json({ success: false, message: "Unauthorized access" });
     }
 
-    const currentUser = await User.findById(userId);
+    const currentUser = await User.findById(userId).populate("subscription.plan");
 
     if (!currentUser) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     if (currentUser.isBanned || currentUser.isDeactivated) {
-      return res.status(403).json({ message: "Account is not active" });
+      return res.status(403).json({ success: false, message: "Account is not active" });
     }
 
-    if (!currentUser.boostsAvailable || currentUser.boostsAvailable <= 0) {
-      return res.status(400).json({ message: "No boosts available" });
+    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to use profile boosts",
+      });
+    }
+
+    const planName = currentUser.subscription.plan?.name?.toLowerCase();
+
+    if (planName === "silver") {
+      return res.status(403).json({
+        success: false,
+        message: "Profile boosts are not included in the Silver plan",
+      });
     }
 
     const now = new Date();
     if (currentUser.boostUntil && new Date(currentUser.boostUntil) > now) {
       return res.status(400).json({ 
+        success: false,
         message: "Boost is already active",
         boostUntil: currentUser.boostUntil 
       });
@@ -586,16 +818,14 @@ const activateBoost = async (req, res) => {
     const BOOST_DURATION_MINUTES = 30;
     const boostUntil = new Date(now.getTime() + BOOST_DURATION_MINUTES * 60 * 1000);
 
-    currentUser.boostsAvailable -= 1;
     currentUser.boostUntil = boostUntil;
-
     await currentUser.save();
 
     return res.status(200).json({
       success: true,
       message: "Boost activated successfully",
       boostUntil,
-      boostsAvailable: currentUser.boostsAvailable,
+      plan: planName,
     });
   } catch (error) {
     return res.status(500).json({ 
@@ -607,6 +837,11 @@ const activateBoost = async (req, res) => {
 };
 
 module.exports = {
+  getPlans,
+  addWalletBalance,
+  getWalletBalance,
+  subscribePlan,
+  getUserSubscription,
   getSwipeProfiles,
   filterProfiles,
   likeProfile,
