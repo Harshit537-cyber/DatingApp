@@ -7,14 +7,23 @@ const {
   getPlanByIdByAdmin,
   updatePlanByAdmin,
   deletePlanByAdmin,
-  getUserSubscriptionsByAdmin
+  getUserSubscriptionsByAdmin,
+  getPlanAnalyticsByAdmin,
+  togglePlanPopularityByAdmin,
 } = require("../controllers/adminPlan.controller");
 
-router.post("/plans", protect, createPlanByAdmin);
-router.get("/plans", protect, getAllPlansByAdmin);
-router.get("/plans/:id", protect, getPlanByIdByAdmin);
-router.put("/plans/:id", protect, updatePlanByAdmin);
-router.delete("/plans/:id", protect, deletePlanByAdmin);
+router.route("/plans")
+  .get(protect, getAllPlansByAdmin)
+  .post(protect, createPlanByAdmin);
+
 router.get("/plans/purchased-users", protect, getUserSubscriptionsByAdmin);
+router.get("/plans/analytics", protect, getPlanAnalyticsByAdmin);
+
+router.route("/plans/:id")
+  .get(protect, getPlanByIdByAdmin)
+  .put(protect, updatePlanByAdmin)
+  .delete(protect, deletePlanByAdmin);
+
+router.patch("/plans/:id/popularity", protect, togglePlanPopularityByAdmin);
 
 module.exports = router;

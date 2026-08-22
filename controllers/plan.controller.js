@@ -15,37 +15,36 @@ const getPlans = async (req, res) => {
     if (plans.length === 0) {
       const defaultPlans = [
         {
-          name: "Silver",
-          subtitle: "BASIC LUXURY",
-          prices: { monthly: 14.99, annual: 8.99 },
+          name: "1 bumpups",
+          subtitle: "BASIC PLAN",
+          prices: { monthly: 9.99, annual: 5.99 }, // Annual price apne hisaab se adjust kar sakte hain
           features: [
-            { text: "Unlimited Likes", included: true },
-            { text: "5 Super Likes per day", included: true },
-            { text: "Profile Boosts", included: false },
+            { text: "1 Profile Bump per month", included: true },
+            { text: "Standard Visibility", included: true },
+            { text: "Priority Support", included: false },
           ],
           isPopular: false,
         },
         {
-          name: "Gold",
+          name: "bumpups+",
           subtitle: "ENHANCED EXPERIENCE",
-          prices: { monthly: 29.99, annual: 17.99 },
+          prices: { monthly: 19.99, annual: 11.99 },
           features: [
-            { text: "Unlimited Likes", included: true },
+            { text: "Unlimited Profile Bumps", included: true },
             { text: "See Who Liked You", included: true },
-            { text: "1 Profile Boost per week", included: true },
-            { text: "Travel Mode enabled", included: true },
+            { text: "Priority Support", included: false },
           ],
           isPopular: true,
         },
         {
-          name: "Platinum",
+          name: "bumpups Pro",
           subtitle: "THE ULTIMATE SUITE",
-          prices: { monthly: 59.99, annual: 35.99 },
+          prices: { monthly: 29.99, annual: 17.99 },
           features: [
+            { text: "Unlimited Profile Bumps", included: true },
             { text: "Priority Messaging", included: true },
             { text: "24/7 Concierge Support", included: true },
             { text: "Elite Profile Badge", included: true },
-            { text: "Hidden Status Visibility", included: true },
           ],
           isPopular: false,
         },

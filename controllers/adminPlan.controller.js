@@ -13,21 +13,15 @@ const createPlanByAdmin = async (req, res) => {
       });
     }
 
-    const plan = await Plan.create({
-      name,
-      subtitle,
-      prices,
-      features,
-      isPopular,
-    });
+    const plan = await Plan.create({ name, subtitle, prices, features, isPopular });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Plan created successfully",
       plan,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -37,13 +31,13 @@ const createPlanByAdmin = async (req, res) => {
 const getAllPlansByAdmin = async (req, res) => {
   try {
     const plans = await Plan.find();
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: plans.length,
       plans,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -52,9 +46,7 @@ const getAllPlansByAdmin = async (req, res) => {
 
 const getPlanByIdByAdmin = async (req, res) => {
   try {
-    const { id } = req.params;
-    const plan = await Plan.findById(id);
-
+    const plan = await Plan.findById(req.params.id);
     if (!plan) {
       return res.status(404).json({
         success: false,
@@ -62,12 +54,12 @@ const getPlanByIdByAdmin = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       plan,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -76,9 +68,7 @@ const getPlanByIdByAdmin = async (req, res) => {
 
 const updatePlanByAdmin = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const updatedPlan = await Plan.findByIdAndUpdate(id, req.body, {
+    const updatedPlan = await Plan.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
     });
@@ -90,13 +80,13 @@ const updatePlanByAdmin = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Plan updated successfully",
       plan: updatedPlan,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -105,8 +95,16 @@ const updatePlanByAdmin = async (req, res) => {
 
 const deletePlanByAdmin = async (req, res) => {
   try {
-    const { id } = req.params;
-    const plan = await Plan.findById(id);
+    const planId = req.params.id;
+
+    if (!planId) {
+      return res.status(400).json({
+        success: false,
+        message: "Plan ID is required",
+      });
+    }
+
+    const plan = await Plan.findByIdAndDelete(planId);
 
     if (!plan) {
       return res.status(404).json({
@@ -115,14 +113,12 @@ const deletePlanByAdmin = async (req, res) => {
       });
     }
 
-    await Plan.findByIdAndDelete(id);
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Plan deleted successfully",
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -166,11 +162,59 @@ const getUserSubscriptionsByAdmin = async (req, res) => {
   }
 };
 
+const getPlanAnalyticsByAdmin = async (req, res) => {
+  try {
+    const totalPlans = await Plan.countDocuments();
+    const activeSubscribers = await User.countDocuments({ plan: { $exists: true, $ne: null } });
+
+    return res.status(200).json({
+      success: true,
+      analytics: {
+        totalPlans,
+        activeSubscribers,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const togglePlanPopularityByAdmin = async (req, res) => {
+  try {
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: "Plan not found",
+      });
+    }
+
+    plan.isPopular = !plan.isPopular;
+    await plan.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Plan popularity updated successfully",
+      plan,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   createPlanByAdmin,
   getAllPlansByAdmin,
   getPlanByIdByAdmin,
   updatePlanByAdmin,
   deletePlanByAdmin,
-  getUserSubscriptionsByAdmin
+  getUserSubscriptionsByAdmin,
+  getPlanAnalyticsByAdmin,
+  togglePlanPopularityByAdmin,
 };
