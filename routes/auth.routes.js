@@ -20,6 +20,7 @@ const {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
+  getAllUsersCount
 } = require("../controllers/auth.controller"); // Path apne folder structure ke hisab se check kar lein
 
 // Multer Config (Memory Storage for Cloudinary Uploads)
@@ -48,6 +49,8 @@ router.use(protect); // Iske niche ke saare routes me 'protect' middleware chale
 router.get("/me", getMe);
 router.get("/profile/:id", getProfileById);
 router.put("/profile", photoUploads, updateProfile);
+
+router.get("/count", getAllUsersCount);
 
 // Account Settings Routes
 router.delete("/account", deleteAccount);

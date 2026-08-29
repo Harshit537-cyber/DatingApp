@@ -512,6 +512,20 @@ const getHelpRequestById = async (req, res) => {
   }
 };
 
+
+const getAllUsersCount = async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    res.status(200).json({
+      success: true,
+      totalUsers,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
 module.exports = {
   registerUser,
   loginUser,
@@ -526,4 +540,5 @@ module.exports = {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
+  getAllUsersCount
 };
