@@ -2,14 +2,16 @@ const checkSubscription = async (req, res, next) => {
   try {
     const user = req.user;
 
-   
-    const isExpired = !user.subscription?.endDate || new Date() > new Date(user.subscription.endDate);
+    
+    const isExpired =
+      !user.subscription?.endDate ||
+      new Date() > new Date(user.subscription.endDate);
 
     if (isExpired || !user.subscription?.isActive) {
       return res.status(403).json({
         success: false,
         requiresSubscription: true,
-        message: "Aapka 1 month trial / subscription expire ho chuka hai. Kripya continue karne ke liye plan lein.",
+        message: "Your trial or subscription has expired. Please subscribe to a plan to continue.",
       });
     }
 
