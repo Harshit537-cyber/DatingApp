@@ -360,11 +360,11 @@ const exportUsersToExcel = async (req, res) => {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=users_data.xlsx"
+      "attachment; filename=users_data.xlsx",
     );
 
     await workbook.xlsx.write(res);
@@ -396,7 +396,7 @@ const resolveHelpRequest = async (req, res) => {
     const helpRequest = await Support.findByIdAndUpdate(
       id,
       { status: "resolved" },
-      { new: true }
+      { new: true },
     );
 
     if (!helpRequest) {
@@ -413,7 +413,7 @@ const resolveHelpRequest = async (req, res) => {
 const getAllUserSubscriptions = async (req, res) => {
   try {
     const users = await User.find({
-      "subscription.plan": { $exists: true, $ne: null }
+      "subscription.plan": { $exists: true, $ne: null },
     })
       .select("name email subscription")
       .populate("subscription.plan", "name subtitle prices")
@@ -429,7 +429,7 @@ const getAllUserSubscriptions = async (req, res) => {
             id: user.subscription.plan._id,
             name: user.subscription.plan.name,
             subtitle: user.subscription.plan.subtitle,
-            prices: user.subscription.plan.prices
+            prices: user.subscription.plan.prices,
           }
         : null,
 
@@ -438,19 +438,18 @@ const getAllUserSubscriptions = async (req, res) => {
       startDate: user.subscription?.startDate,
       endDate: user.subscription?.endDate,
 
-      isActive: user.subscription?.isActive
+      isActive: user.subscription?.isActive,
     }));
 
     res.status(200).json({
       success: true,
       count: subscriptions.length,
-      subscriptions
+      subscriptions,
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -461,7 +460,7 @@ const searchUser = async (req, res) => {
     if (!search || !search.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Please enter a search value"
+        message: "Please enter a search value",
       });
     }
 
@@ -471,35 +470,71 @@ const searchUser = async (req, res) => {
       $or: [
         { name: searchRegex },
         { email: searchRegex },
-        { phone: searchRegex }
-      ]
+        { phone: searchRegex },
+      ],
     })
       .select("-password -otp -refreshToken")
-      .populate(
-        "subscription.plan",
-        "name subtitle prices features isPopular"
-      );
+      .populate("subscription.plan", "name subtitle prices features isPopular");
 
     if (users.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
     res.status(200).json({
       success: true,
       count: users.length,
-      users
+      users,
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
+
+const getUserStatsAndUnmatchedUsers = async (req, res) => {
+  try {
+    const [maleCount, femaleCount, unmatchedUsers] = await Promise.all([
+      User.countDocuments({ gender: { $regex: /^male$/i } }),
+      User.countDocuments({ gender: { $regex: /^female$/i } }),
+      User.find({
+        $or: [
+          { matches: { $exists: false } },
+          { matches: { $size: 0 } }
+        ]
+      })
+        .select("name email gender age profilePic createdAt")
+        .sort({ createdAt: -1 })
+    ]);
+
+    const formattedUnmatchedUsers = unmatchedUsers.map((user) => ({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      gender: user.gender,
+      age: user.age,
+      profilePic: user.profilePic,
+      registeredDate: user.createdAt ? user.createdAt.toISOString().split("T")[0] : null,
+      registeredTime: user.createdAt ? user.createdAt.toTimeString().split(" ")[0] : null,
+      createdAt: user.createdAt
+    }));
+
+    res.status(200).json({
+      success: true,
+      totalMaleUsers: maleCount,
+      totalFemaleUsers: femaleCount,
+      unmatchedUsersCount: formattedUnmatchedUsers.length,
+      unmatchedUsers: formattedUnmatchedUsers
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   registerAdmin,
   loginAdmin,
@@ -517,4 +552,5 @@ module.exports = {
   exportUsersToExcel,
   getHelpRequests,
   resolveHelpRequest,
+  getUserStatsAndUnmatchedUsers 
 };

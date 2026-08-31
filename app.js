@@ -29,9 +29,9 @@ app.use("/api/notifications", userNotificationRoutes);
 
 // Admin Routes
 app.use("/api/admin", adminRoutes);
-app.use("/api/admin/users-manage", adminRoutes); // Aapkapurana adminUserRoutes same hi file pe point ho raha tha
+app.use("/api/admin/users-manage", adminRoutes); 
 app.use("/api/admin/plans-manage", adminPlanRoutes);
-app.use("/api/admin/match-manage", adminMatchRoutes); // <-- Naya Admin Match Route Mount kiya
+app.use("/api/admin/match-manage", adminMatchRoutes); 
 app.use("/api/admin/notifications", adminNotificationRoutes);
 
 module.exports = app;

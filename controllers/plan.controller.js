@@ -1,12 +1,6 @@
-const Razorpay = require("razorpay");
-const crypto = require("crypto");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const Plan = require("../models/plan.model");
 const User = require("../models/user.model");
-
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
 
 const getPlans = async (req, res) => {
   try {
@@ -15,36 +9,37 @@ const getPlans = async (req, res) => {
     if (plans.length === 0) {
       const defaultPlans = [
         {
-          name: "1 bumpups",
-          subtitle: "BASIC PLAN",
-          prices: { monthly: 9.99, annual: 5.99 }, // Annual price apne hisaab se adjust kar sakte hain
+          name: "Silver",
+          subtitle: "BASIC LUXURY",
+          prices: { monthly: 14.99, annual: 8.99 },
           features: [
-            { text: "1 Profile Bump per month", included: true },
-            { text: "Standard Visibility", included: true },
-            { text: "Priority Support", included: false },
+            { text: "Unlimited Likes", included: true },
+            { text: "5 Super Likes per day", included: true },
+            { text: "Profile Boosts", included: false },
           ],
           isPopular: false,
         },
         {
-          name: "bumpups+",
+          name: "Gold",
           subtitle: "ENHANCED EXPERIENCE",
-          prices: { monthly: 19.99, annual: 11.99 },
+          prices: { monthly: 29.99, annual: 17.99 },
           features: [
-            { text: "Unlimited Profile Bumps", included: true },
+            { text: "Unlimited Likes", included: true },
             { text: "See Who Liked You", included: true },
-            { text: "Priority Support", included: false },
+            { text: "1 Profile Boost per week", included: true },
+            { text: "Travel Mode enabled", included: true },
           ],
           isPopular: true,
         },
         {
-          name: "bumpups Pro",
+          name: "Platinum",
           subtitle: "THE ULTIMATE SUITE",
-          prices: { monthly: 29.99, annual: 17.99 },
+          prices: { monthly: 59.99, annual: 35.99 },
           features: [
-            { text: "Unlimited Profile Bumps", included: true },
             { text: "Priority Messaging", included: true },
             { text: "24/7 Concierge Support", included: true },
             { text: "Elite Profile Badge", included: true },
+            { text: "Hidden Status Visibility", included: true },
           ],
           isPopular: false,
         },
@@ -58,23 +53,28 @@ const getPlans = async (req, res) => {
   }
 };
 
-const createWalletOrder = async (req, res) => {
+const createWalletPaymentIntent = async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, currency = "usd" } = req.body;
 
     if (!amount || Number(amount) <= 0) {
       return res.status(400).json({ success: false, message: "Please provide a valid amount" });
     }
 
-    const options = {
+    const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(Number(amount) * 100),
-      currency: "INR",
-      receipt: `wallet_rcpt_${Date.now()}`,
-    };
+      currency: currency.toLowerCase(),
+      metadata: {
+        userId: req.user.id.toString(),
+        type: "wallet_topup",
+      },
+    });
 
-    const order = await razorpay.orders.create(options);
-
-    res.status(200).json({ success: true, order });
+    res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -83,16 +83,20 @@ const createWalletOrder = async (req, res) => {
 const verifyAndAddWalletBalance = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body;
+    const { paymentIntentId } = req.body;
 
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
-      .digest("hex");
+    if (!paymentIntentId) {
+      return res.status(400).json({ success: false, message: "Payment Intent ID is required" });
+    }
 
-    if (expectedSignature !== razorpay_signature) {
-      return res.status(400).json({ success: false, message: "Invalid payment signature" });
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    if (paymentIntent.status !== "succeeded") {
+      return res.status(400).json({ success: false, message: "Payment has not been completed" });
+    }
+
+    if (paymentIntent.metadata.userId !== userId.toString()) {
+      return res.status(403).json({ success: false, message: "Unauthorized payment verification" });
     }
 
     const user = await User.findById(userId);
@@ -100,12 +104,13 @@ const verifyAndAddWalletBalance = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    user.walletBalance = (user.walletBalance || 0) + Number(amount);
+    const addedAmount = paymentIntent.amount / 100;
+    user.walletBalance = (user.walletBalance || 0) + addedAmount;
     await user.save();
 
     res.status(200).json({
       success: true,
-      message: "Payment verified and amount added successfully",
+      message: "Payment verified and wallet balance updated successfully",
       walletBalance: user.walletBalance,
     });
   } catch (error) {
@@ -129,7 +134,7 @@ const getWalletBalance = async (req, res) => {
 const subscribePlan = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { planId, billingCycle, paymentMethod } = req.body;
+    const { planId, billingCycle, paymentMethod, currency = "usd" } = req.body;
 
     if (!["monthly", "annual"].includes(billingCycle)) {
       return res.status(400).json({ success: false, message: "Invalid billing cycle." });
@@ -165,16 +170,23 @@ const subscribePlan = async (req, res) => {
       });
     }
 
-    const options = {
+    const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(Number(planPrice) * 100),
-      currency: "INR",
-      receipt: `sub_rcpt_${Date.now()}`,
-      notes: { userId, planId, billingCycle },
-    };
+      currency: currency.toLowerCase(),
+      metadata: {
+        userId: userId.toString(),
+        planId: planId.toString(),
+        billingCycle,
+        type: "plan_subscription",
+      },
+    });
 
-    const order = await razorpay.orders.create(options);
-
-    res.status(200).json({ success: true, requiresRazorpay: true, order });
+    res.status(200).json({
+      success: true,
+      requiresStripe: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -183,16 +195,20 @@ const subscribePlan = async (req, res) => {
 const verifyAndSubscribePlan = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planId, billingCycle } = req.body;
+    const { paymentIntentId, planId, billingCycle } = req.body;
 
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
-      .digest("hex");
+    if (!paymentIntentId) {
+      return res.status(400).json({ success: false, message: "Payment Intent ID is required" });
+    }
 
-    if (expectedSignature !== razorpay_signature) {
-      return res.status(400).json({ success: false, message: "Invalid payment signature" });
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    if (paymentIntent.status !== "succeeded") {
+      return res.status(400).json({ success: false, message: "Payment has not been completed" });
+    }
+
+    if (paymentIntent.metadata.userId !== userId.toString()) {
+      return res.status(403).json({ success: false, message: "Unauthorized payment verification" });
     }
 
     const user = await User.findById(userId);
@@ -200,7 +216,10 @@ const verifyAndSubscribePlan = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    activateSubscription(user, planId, billingCycle);
+    const targetPlanId = planId || paymentIntent.metadata.planId;
+    const targetBillingCycle = billingCycle || paymentIntent.metadata.billingCycle;
+
+    activateSubscription(user, targetPlanId, targetBillingCycle);
     await user.save();
     await user.populate("subscription.plan");
 
@@ -229,6 +248,7 @@ const activateSubscription = (user, planId, billingCycle) => {
     startDate,
     endDate,
     isActive: true,
+    isTrial: false,
   };
 };
 
@@ -237,7 +257,7 @@ const getUserSubscription = async (req, res) => {
     const userId = req.user.id;
     const user = await User.findById(userId).populate("subscription.plan");
 
-    if (!user || !user.subscription || !user.subscription.isActive) {
+    if (!user || !user.subscription) {
       return res.status(200).json({
         success: true,
         hasActiveSubscription: false,
@@ -245,9 +265,22 @@ const getUserSubscription = async (req, res) => {
       });
     }
 
+    const isExpired = new Date() > new Date(user.subscription.endDate);
+
+    if (isExpired) {
+      user.subscription.isActive = false;
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        hasActiveSubscription: false,
+        subscription: user.subscription,
+      });
+    }
+
     res.status(200).json({
       success: true,
-      hasActiveSubscription: true,
+      hasActiveSubscription: user.subscription.isActive,
       subscription: user.subscription,
     });
   } catch (error) {
@@ -257,7 +290,7 @@ const getUserSubscription = async (req, res) => {
 
 module.exports = {
   getPlans,
-  createWalletOrder,
+  createWalletPaymentIntent,
   verifyAndAddWalletBalance,
   getWalletBalance,
   subscribePlan,

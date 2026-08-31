@@ -101,7 +101,6 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-
     location: {
       type: {
         type: String,
@@ -114,9 +113,9 @@ const userSchema = new mongoose.Schema(
       },
     },
     isBanned: {
-    type: Boolean,
-    default: false
-},
+      type: Boolean,
+      default: false,
+    },
     distancePreference: {
       type: Number,
       default: 50,
@@ -177,6 +176,14 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    lastSeen: {
+      type: Date,
+      default: null,
+    },
     subscription: {
       plan: {
         type: mongoose.Schema.Types.ObjectId,
@@ -185,34 +192,30 @@ const userSchema = new mongoose.Schema(
       },
       billingCycle: {
         type: String,
-        enum: ["monthly", "annual"],
-        default: "monthly",
-      },
-      isOnline: {
-        type: Boolean,
-        default: false,
-      },
-      lastSeen: {
-        type: Date,
-        default: null,
+        enum: ["trial", "monthly", "annual"],
+        default: "trial",
       },
       startDate: {
         type: Date,
-        default: null,
+        default: Date.now,
       },
       endDate: {
         type: Date,
-        default: null,
+        default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
       isActive: {
         type: Boolean,
-        default: false,
+        default: true,
+      },
+      isTrial: {
+        type: Boolean,
+        default: true,
       },
     },
   },
   {
     timestamps: true,
-  },
+  }
 );
 
 userSchema.index({ location: "2dsphere" });

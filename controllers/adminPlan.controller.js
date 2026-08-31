@@ -131,12 +131,15 @@ const getUserSubscriptionsByAdmin = async (req, res) => {
     const limit = parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
 
-    const query = { plan: { $exists: true, $ne: null } };
+    const query = {
+      "subscription.plan": { $exists: true, $ne: null },
+      "subscription.isTrial": false,
+    };
 
     const [users, totalUsers] = await Promise.all([
       User.find(query)
-        .populate("plan")
-        .select("name email phone profilePic plan planStartDate planEndDate createdAt")
+        .populate("subscription.plan")
+        .select("name email phone profilePic subscription createdAt")
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -165,13 +168,27 @@ const getUserSubscriptionsByAdmin = async (req, res) => {
 const getPlanAnalyticsByAdmin = async (req, res) => {
   try {
     const totalPlans = await Plan.countDocuments();
-    const activeSubscribers = await User.countDocuments({ plan: { $exists: true, $ne: null } });
+    const now = new Date();
+
+    const activePaidSubscribers = await User.countDocuments({
+      "subscription.plan": { $exists: true, $ne: null },
+      "subscription.isActive": true,
+      "subscription.isTrial": false,
+      "subscription.endDate": { $gt: now },
+    });
+
+    const activeTrialUsers = await User.countDocuments({
+      "subscription.isActive": true,
+      "subscription.isTrial": true,
+      "subscription.endDate": { $gt: now },
+    });
 
     return res.status(200).json({
       success: true,
       analytics: {
         totalPlans,
-        activeSubscribers,
+        activeSubscribers: activePaidSubscribers,
+        activeTrialUsers,
       },
     });
   } catch (error) {

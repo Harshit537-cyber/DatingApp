@@ -3,7 +3,7 @@ const router = express.Router();
 
 const {
   getPlans,
-  createWalletOrder,
+  createWalletPaymentIntent,
   verifyAndAddWalletBalance,
   getWalletBalance,
   subscribePlan,
@@ -13,8 +13,9 @@ const {
 
 const { protect } = require("../middleware/authMiddleware");
 
+// Plan dekhna aur khareedna hamesha open rahega (checkSubscription nahi lagega)
 router.get("/allplans", getPlans);
-router.post("/wallet/create-order", protect, createWalletOrder);
+router.post("/wallet/create-intent", protect, createWalletPaymentIntent);
 router.post("/wallet/verify", protect, verifyAndAddWalletBalance);
 router.get("/wallet", protect, getWalletBalance);
 router.post("/subscribe", protect, subscribePlan);

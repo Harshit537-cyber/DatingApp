@@ -1,6 +1,11 @@
 const Plan = require("../models/plan.model");
 const User = require("../models/user.model");
 
+const checkSubscriptionStatus = (user) => {
+  if (!user.subscription || !user.subscription.isActive) return false;
+  return new Date(user.subscription.endDate) > new Date();
+};
+
 const getPlans = async (req, res) => {
   try {
     let plans = await Plan.find();
@@ -175,6 +180,7 @@ const subscribePlan = async (req, res) => {
       startDate,
       endDate,
       isActive: true,
+      isTrial: false,
     };
 
     await user.save();
@@ -199,7 +205,7 @@ const getUserSubscription = async (req, res) => {
     const userId = req.user.id;
     const user = await User.findById(userId).populate("subscription.plan");
 
-    if (!user || !user.subscription || !user.subscription.isActive) {
+    if (!user || !user.subscription) {
       return res.status(200).json({
         success: true,
         hasActiveSubscription: false,
@@ -207,9 +213,22 @@ const getUserSubscription = async (req, res) => {
       });
     }
 
+    const isExpired = new Date() > new Date(user.subscription.endDate);
+
+    if (isExpired) {
+      user.subscription.isActive = false;
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        hasActiveSubscription: false,
+        subscription: user.subscription,
+      });
+    }
+
     res.status(200).json({
       success: true,
-      hasActiveSubscription: true,
+      hasActiveSubscription: user.subscription.isActive,
       subscription: user.subscription,
     });
   } catch (error) {
@@ -609,7 +628,7 @@ const getWhoLikedMe = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+    if (!checkSubscriptionStatus(currentUser)) {
       return res.status(403).json({
         success: false,
         message: "Active subscription required to see who liked you",
@@ -656,7 +675,7 @@ const getWhoLikedMeFiltered = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+    if (!checkSubscriptionStatus(currentUser)) {
       return res.status(403).json({
         success: false,
         message: "Active subscription required to see who liked you",
@@ -735,7 +754,7 @@ const searchLikes = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+    if (!checkSubscriptionStatus(currentUser)) {
       return res.status(403).json({
         success: false,
         message: "Active subscription required to search likes",
@@ -790,7 +809,7 @@ const activateBoost = async (req, res) => {
       return res.status(403).json({ success: false, message: "Account is not active" });
     }
 
-    if (!currentUser.subscription || !currentUser.subscription.isActive) {
+    if (!checkSubscriptionStatus(currentUser)) {
       return res.status(403).json({
         success: false,
         message: "Active subscription required to use profile boosts",
@@ -799,7 +818,7 @@ const activateBoost = async (req, res) => {
 
     const planName = currentUser.subscription.plan?.name?.toLowerCase();
 
-    if (planName === "silver") {
+    if (!currentUser.subscription.isTrial && planName === "silver") {
       return res.status(403).json({
         success: false,
         message: "Profile boosts are not included in the Silver plan",
@@ -808,10 +827,10 @@ const activateBoost = async (req, res) => {
 
     const now = new Date();
     if (currentUser.boostUntil && new Date(currentUser.boostUntil) > now) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
         message: "Boost is already active",
-        boostUntil: currentUser.boostUntil 
+        boostUntil: currentUser.boostUntil,
       });
     }
 
@@ -825,13 +844,13 @@ const activateBoost = async (req, res) => {
       success: true,
       message: "Boost activated successfully",
       boostUntil,
-      plan: planName,
+      plan: currentUser.subscription.isTrial ? "free_trial" : planName,
     });
   } catch (error) {
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: "Internal server error", 
-      error: error.message 
+      message: "Internal server error",
+      error: error.message,
     });
   }
 };

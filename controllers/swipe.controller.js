@@ -13,9 +13,7 @@ const superLikeUser = async (req, res) => {
       });
     }
 
-    const currentUser = await User.findById(userId).populate(
-      "subscription.plan"
-    );
+    const currentUser = await User.findById(userId).populate("subscription.plan");
 
     if (!currentUser) {
       return res.status(404).json({
@@ -32,22 +30,20 @@ const superLikeUser = async (req, res) => {
     if (!isSubscribed) {
       return res.status(403).json({
         success: false,
-        message:
-          "Super Likes are only available for subscribed users. Please upgrade your plan.",
+        message: "Super Likes are only available for subscribed users. Please upgrade your plan.",
       });
     }
 
-    const planName = currentUser.subscription.plan
-      ? currentUser.subscription.plan.name
-      : "";
+    const isTrial = currentUser.subscription.isTrial;
+    const planName = currentUser.subscription.plan ? currentUser.subscription.plan.name : "";
 
     let dailyLimit = 0;
-    if (planName === "Silver") {
+    if (isTrial || planName === "Platinum") {
+      dailyLimit = Infinity;
+    } else if (planName === "Silver") {
       dailyLimit = 5;
     } else if (planName === "Gold") {
       dailyLimit = 10;
-    } else if (planName === "Platinum") {
-      dailyLimit = Infinity;
     }
 
     if (dailyLimit !== Infinity) {

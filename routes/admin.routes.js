@@ -20,6 +20,7 @@ const {
   exportUsersToExcel,
   getHelpRequests,
   resolveHelpRequest,
+  getUserStatsAndUnmatchedUsers
 } = require("../controllers/admin.controller");
 
 const {
@@ -54,5 +55,7 @@ router.get("/help-requests", getHelpRequests);
 router.patch("/help-requests/:id/resolve", resolveHelpRequest);
 
 router.get("/reports/history", getReportHistory);
+
+router.get("/users/analytics/unmatched", getUserStatsAndUnmatchedUsers);
 
 module.exports = router;
