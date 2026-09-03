@@ -369,6 +369,35 @@ const getUserSubscription = async (req, res) => {
   }
 };
 
+const handlePaymentFailure = async (req, res) => {
+  try {
+    const { paymentIntentId, reason } = req.body;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({ success: false, message: "Payment Intent ID is required" });
+    }
+
+    const transaction = await Transaction.findOne({ paymentIntentId });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: "Transaction not found" });
+    }
+
+    transaction.status = "failed";
+    if (reason) {
+      transaction.failureReason = reason;
+    }
+    await transaction.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Transaction status updated to failed",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getPlans,
   createWalletPaymentIntent,
@@ -377,4 +406,5 @@ module.exports = {
   subscribePlan,
   verifyAndSubscribePlan,
   getUserSubscription,
+  handlePaymentFailure,
 };
