@@ -13,7 +13,6 @@ const {
 
 const { protect } = require("../middleware/authMiddleware");
 
-
 router.get("/allplans", getPlans);
 router.post("/wallet/create-intent", protect, createWalletPaymentIntent);
 router.post("/wallet/verify", protect, verifyAndAddWalletBalance);

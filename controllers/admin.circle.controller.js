@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 const User = require("../models/user.model");
+=======
+>>>>>>> f849216383f768ce95594ede692360e8ab517990
 const Event = require("../models/event.model");
 const Discussion = require("../models/discussion.model");
 
@@ -111,6 +114,7 @@ const deleteDiscussionByAdmin = async (req, res) => {
   }
 };
 
+<<<<<<< HEAD
 const getAllMembersForAdmin = async (req, res) => {
   try {
     const members = await User.find().select("-password").sort({ createdAt: -1 });
@@ -185,6 +189,8 @@ const deleteMemberByAdmin = async (req, res) => {
   }
 };
 
+=======
+>>>>>>> f849216383f768ce95594ede692360e8ab517990
 module.exports = {
   getAllEventsForAdmin,
   createEventByAdmin,
@@ -192,8 +198,11 @@ module.exports = {
   deleteEventByAdmin,
   getAllDiscussionsForAdmin,
   deleteDiscussionByAdmin,
+<<<<<<< HEAD
   getAllMembersForAdmin,
   getAdminDashboardStats,
   toggleMemberStatusByAdmin,
   deleteMemberByAdmin,
+=======
+>>>>>>> f849216383f768ce95594ede692360e8ab517990
 };
