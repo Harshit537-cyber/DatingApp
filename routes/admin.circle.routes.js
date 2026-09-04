@@ -10,13 +10,10 @@ const {
   deleteEventByAdmin,
   getAllDiscussionsForAdmin,
   deleteDiscussionByAdmin,
-<<<<<<< HEAD
   getAllMembersForAdmin,
   getAdminDashboardStats,
   toggleMemberStatusByAdmin,
   deleteMemberByAdmin,
-=======
->>>>>>> f849216383f768ce95594ede692360e8ab517990
 } = require("../controllers/admin.circle.controller");
 
 router.use(protect);
@@ -29,12 +26,9 @@ router.delete("/events/:id", deleteEventByAdmin);
 router.get("/discussions", getAllDiscussionsForAdmin);
 router.delete("/discussions/:id", deleteDiscussionByAdmin);
 
-<<<<<<< HEAD
 router.get("/dashboard/stats", getAdminDashboardStats);
 router.get("/members", getAllMembersForAdmin);
 router.patch("/members/:id/toggle-status", toggleMemberStatusByAdmin);
 router.delete("/members/:id", deleteMemberByAdmin);
 
-=======
->>>>>>> f849216383f768ce95594ede692360e8ab517990
 module.exports = router;
