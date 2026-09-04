@@ -9,6 +9,9 @@ const {
   adminUpdateWallet,
   adminManageSubscription,
   adminResetUserSwipes,
+  adminGetAllSubscriptions,
+  adminGetPlatformStats,
+  adminRemoveUserMatch,
 } = require("../controllers/adminMatch.controller");
 
 router.get("/plans", adminGetPlans);
@@ -18,5 +21,9 @@ router.get("/user/:userId", adminGetUserMatchData);
 router.put("/user/:userId/wallet", adminUpdateWallet);
 router.put("/user/:userId/subscription", adminManageSubscription);
 router.post("/user/:userId/reset-swipes", adminResetUserSwipes);
+
+router.get("/subscriptions/all", adminGetAllSubscriptions);
+router.get("/stats/platform", adminGetPlatformStats);
+router.post("/match/remove", adminRemoveUserMatch);
 
 module.exports = router;

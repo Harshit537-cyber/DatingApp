@@ -1,7 +1,6 @@
 const User = require("../models/user.model");
 const Plan = require("../models/plan.model");
 
-
 const adminGetPlans = async (req, res) => {
   try {
     const plans = await Plan.find();
@@ -10,7 +9,6 @@ const adminGetPlans = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 const adminSavePlan = async (req, res) => {
   try {
@@ -34,7 +32,6 @@ const adminSavePlan = async (req, res) => {
   }
 };
 
-
 const adminDeletePlan = async (req, res) => {
   try {
     const { planId } = req.params;
@@ -44,7 +41,6 @@ const adminDeletePlan = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 const adminGetUserMatchData = async (req, res) => {
   try {
@@ -73,11 +69,10 @@ const adminGetUserMatchData = async (req, res) => {
   }
 };
 
-// 5. Update user wallet balance (Add/Deduct)
 const adminUpdateWallet = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { amount, action } = req.body; // action: 'add' or 'set'
+    const { amount, action } = req.body;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -101,7 +96,6 @@ const adminUpdateWallet = async (req, res) => {
   }
 };
 
-// 6. Give or Revoke User Subscription (Admin Override)
 const adminManageSubscription = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -148,7 +142,6 @@ const adminManageSubscription = async (req, res) => {
   }
 };
 
-// 7. Clear or Reset User Swipes (Likes, Passes, Matches)
 const adminResetUserSwipes = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -170,6 +163,74 @@ const adminResetUserSwipes = async (req, res) => {
   }
 };
 
+const adminGetAllSubscriptions = async (req, res) => {
+  try {
+    const users = await User.find({ "subscription.isActive": true })
+      .populate("subscription.plan", "name prices")
+      .select("name email profilePic subscription walletBalance");
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      users,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminGetPlatformStats = async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const activeSubscriptions = await User.countDocuments({ "subscription.isActive": true });
+    const totalMatches = await User.aggregate([
+      { $project: { matchCount: { $size: { $ifNull: ["$matches", []] } } } },
+      { $group: { _id: null, total: { $sum: "$matchCount" } } },
+    ]);
+
+    const walletBalanceSum = await User.aggregate([
+      { $group: { _id: null, total: { $sum: "$walletBalance" } } },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalUsers,
+        activeSubscriptions,
+        totalMatches: totalMatches[0] ? totalMatches[0].total / 2 : 0,
+        totalWalletBalance: walletBalanceSum[0] ? walletBalanceSum[0].total : 0,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminRemoveUserMatch = async (req, res) => {
+  try {
+    const { userId, targetUserId } = req.body;
+
+    if (!userId || !targetUserId) {
+      return res.status(400).json({ success: false, message: "Both userId and targetUserId are required" });
+    }
+
+    await User.findByIdAndUpdate(userId, {
+      $pull: { matches: targetUserId, likes: targetUserId, superLikes: targetUserId },
+    });
+
+    await User.findByIdAndUpdate(targetUserId, {
+      $pull: { matches: userId, likes: userId, superLikes: userId },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Match removed successfully between users",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   adminGetPlans,
   adminSavePlan,
@@ -178,4 +239,7 @@ module.exports = {
   adminUpdateWallet,
   adminManageSubscription,
   adminResetUserSwipes,
+  adminGetAllSubscriptions,
+  adminGetPlatformStats,
+  adminRemoveUserMatch,
 };
