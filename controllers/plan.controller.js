@@ -1,4 +1,5 @@
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const mongoose = require("mongoose");
 const Plan = require("../models/plan.model");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
@@ -91,61 +92,83 @@ const createWalletPaymentIntent = async (req, res) => {
   }
 };
 
+// Wallet Balance Verification (Idempotent & Safe)
 const verifyAndAddWalletBalance = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const userId = req.user.id;
     const { paymentIntentId } = req.body;
 
     if (!paymentIntentId) {
+      await session.abortTransaction();
       return res.status(400).json({ success: false, message: "Payment Intent ID is required" });
     }
 
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
     if (paymentIntent.status !== "succeeded") {
+      await session.abortTransaction();
       return res.status(400).json({ success: false, message: "Payment has not been completed" });
     }
 
     if (paymentIntent.metadata.userId !== userId.toString()) {
+      await session.abortTransaction();
       return res.status(403).json({ success: false, message: "Unauthorized payment verification" });
     }
 
-    const transaction = await Transaction.findOne({ paymentIntentId });
+    // Atomic Status Check
+    const transaction = await Transaction.findOne({ paymentIntentId }).session(session);
     if (transaction && transaction.status === "succeeded") {
-      return res.status(400).json({ success: false, message: "Transaction already processed" });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      await session.abortTransaction();
+      const user = await User.findById(userId);
+      return res.status(200).json({
+        success: true,
+        message: "Transaction already processed",
+        walletBalance: user.walletBalance,
+      });
     }
 
     const addedAmount = paymentIntent.amount / 100;
-    user.walletBalance = (user.walletBalance || 0) + addedAmount;
-    await user.save();
+    
+    // Atomic Wallet Update (No Race Condition)
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { walletBalance: addedAmount } },
+      { new: true, session }
+    );
 
     if (transaction) {
       transaction.status = "succeeded";
-      await transaction.save();
+      await transaction.save({ session });
     } else {
-      await Transaction.create({
-        user: userId,
-        type: "wallet_topup",
-        amount: addedAmount,
-        currency: paymentIntent.currency,
-        status: "succeeded",
-        paymentIntentId: paymentIntent.id,
-        paymentMethod: "stripe",
-      });
+      await Transaction.create(
+        [{
+          user: userId,
+          type: "wallet_topup",
+          amount: addedAmount,
+          currency: paymentIntent.currency,
+          status: "succeeded",
+          paymentIntentId: paymentIntent.id,
+          paymentMethod: "stripe",
+        }],
+        { session }
+      );
     }
+
+    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
       message: "Payment verified and wallet balance updated successfully",
-      walletBalance: user.walletBalance,
+      walletBalance: updatedUser.walletBalance,
     });
   } catch (error) {
+    await session.abortTransaction();
     res.status(500).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -162,57 +185,76 @@ const getWalletBalance = async (req, res) => {
   }
 };
 
+// Plan Subscription (Race Condition Fixed via Atomic Update)
 const subscribePlan = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const userId = req.user.id;
     const { planId, billingCycle, paymentMethod, currency = "usd" } = req.body;
 
     if (!["monthly", "annual"].includes(billingCycle)) {
+      await session.abortTransaction();
       return res.status(400).json({ success: false, message: "Invalid billing cycle." });
     }
 
     const plan = await Plan.findById(planId);
     if (!plan) {
+      await session.abortTransaction();
       return res.status(404).json({ success: false, message: "Plan not found" });
     }
 
     const planPrice = billingCycle === "monthly" ? plan.prices.monthly : plan.prices.annual;
-    const user = await User.findById(userId);
 
     if (paymentMethod === "wallet") {
-      const currentBalance = user.walletBalance || 0;
-      if (currentBalance < planPrice) {
+      // ATOMIC UPDATE: Check and decrement balance simultaneously
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: userId, walletBalance: { $gte: planPrice } },
+        { $inc: { walletBalance: -planPrice } },
+        { new: true, session }
+      );
+
+      if (!updatedUser) {
+        await session.abortTransaction();
         return res.status(400).json({
           success: false,
-          message: `Insufficient wallet balance. Required: $${planPrice}, Available: $${currentBalance}`,
+          message: "Insufficient wallet balance or account busy. Please try again.",
         });
       }
 
-      user.walletBalance = currentBalance - planPrice;
-      activateSubscription(user, plan._id, billingCycle);
-      await user.save();
-      await user.populate("subscription.plan");
+      activateSubscription(updatedUser, plan._id, billingCycle);
+      await updatedUser.save({ session });
+      await updatedUser.populate("subscription.plan");
 
       const mockIntentId = `wallet_${userId}_${Date.now()}`;
-      await Transaction.create({
-        user: userId,
-        type: "plan_subscription",
-        amount: planPrice,
-        currency: currency.toLowerCase(),
-        status: "succeeded",
-        paymentIntentId: mockIntentId,
-        plan: plan._id,
-        billingCycle,
-        paymentMethod: "wallet",
-      });
+      await Transaction.create(
+        [{
+          user: userId,
+          type: "plan_subscription",
+          amount: planPrice,
+          currency: currency.toLowerCase(),
+          status: "succeeded",
+          paymentIntentId: mockIntentId,
+          plan: plan._id,
+          billingCycle,
+          paymentMethod: "wallet",
+        }],
+        { session }
+      );
+
+      await session.commitTransaction();
 
       return res.status(200).json({
         success: true,
         message: "Subscribed successfully using wallet",
-        walletBalance: user.walletBalance,
-        subscription: user.subscription,
+        walletBalance: updatedUser.walletBalance,
+        subscription: updatedUser.subscription,
       });
     }
+
+    // Stripe Flow
+    await session.abortTransaction(); // Session not needed for external call
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(Number(planPrice) * 100),
@@ -244,36 +286,52 @@ const subscribePlan = async (req, res) => {
       paymentIntentId: paymentIntent.id,
     });
   } catch (error) {
+    await session.abortTransaction();
     res.status(500).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
   }
 };
 
 const verifyAndSubscribePlan = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const userId = req.user.id;
     const { paymentIntentId, planId, billingCycle } = req.body;
 
     if (!paymentIntentId) {
+      await session.abortTransaction();
       return res.status(400).json({ success: false, message: "Payment Intent ID is required" });
     }
 
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
     if (paymentIntent.status !== "succeeded") {
+      await session.abortTransaction();
       return res.status(400).json({ success: false, message: "Payment has not been completed" });
     }
 
     if (paymentIntent.metadata.userId !== userId.toString()) {
+      await session.abortTransaction();
       return res.status(403).json({ success: false, message: "Unauthorized payment verification" });
     }
 
-    const transaction = await Transaction.findOne({ paymentIntentId });
+    const transaction = await Transaction.findOne({ paymentIntentId }).session(session);
     if (transaction && transaction.status === "succeeded") {
-      return res.status(400).json({ success: false, message: "Transaction already processed" });
+      await session.abortTransaction();
+      const user = await User.findById(userId).populate("subscription.plan");
+      return res.status(200).json({
+        success: true,
+        message: "Transaction already processed",
+        subscription: user.subscription,
+      });
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).session(session);
     if (!user) {
+      await session.abortTransaction();
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
@@ -281,28 +339,35 @@ const verifyAndSubscribePlan = async (req, res) => {
     const targetBillingCycle = billingCycle || paymentIntent.metadata.billingCycle;
 
     activateSubscription(user, targetPlanId, targetBillingCycle);
-    await user.save();
+    await user.save({ session });
     await user.populate("subscription.plan");
 
     if (transaction) {
       transaction.status = "succeeded";
-      await transaction.save();
+      await transaction.save({ session });
     } else {
       const plan = await Plan.findById(targetPlanId);
-      const planPrice = plan ? (targetBillingCycle === "monthly" ? plan.prices.monthly : plan.prices.annual) : paymentIntent.amount / 100;
+      const planPrice = plan
+        ? (targetBillingCycle === "monthly" ? plan.prices.monthly : plan.prices.annual)
+        : paymentIntent.amount / 100;
 
-      await Transaction.create({
-        user: userId,
-        type: "plan_subscription",
-        amount: planPrice,
-        currency: paymentIntent.currency,
-        status: "succeeded",
-        paymentIntentId: paymentIntent.id,
-        plan: targetPlanId,
-        billingCycle: targetBillingCycle,
-        paymentMethod: "stripe",
-      });
+      await Transaction.create(
+        [{
+          user: userId,
+          type: "plan_subscription",
+          amount: planPrice,
+          currency: paymentIntent.currency,
+          status: "succeeded",
+          paymentIntentId: paymentIntent.id,
+          plan: targetPlanId,
+          billingCycle: targetBillingCycle,
+          paymentMethod: "stripe",
+        }],
+        { session }
+      );
     }
+
+    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
@@ -310,7 +375,89 @@ const verifyAndSubscribePlan = async (req, res) => {
       subscription: user.subscription,
     });
   } catch (error) {
+    await session.abortTransaction();
     res.status(500).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
+  }
+};
+
+// 🔒 ENTERPRISE STRIPE WEBHOOK HANDLER
+const handleStripeWebhook = async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    // Signature Verify: Proves request came ONLY from Stripe
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error(`[Webhook Error] Signature Failed: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  const session = await mongoose.startSession();
+
+  try {
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+      const { userId, type, planId, billingCycle } = paymentIntent.metadata;
+
+      session.startTransaction();
+
+      // Check if already processed
+      const existingTx = await Transaction.findOne({ paymentIntentId: paymentIntent.id }).session(session);
+      if (existingTx && existingTx.status === "succeeded") {
+        await session.abortTransaction();
+        return res.json({ received: true });
+      }
+
+      if (type === "wallet_topup") {
+        const addedAmount = paymentIntent.amount / 100;
+        await User.findByIdAndUpdate(
+          userId,
+          { $inc: { walletBalance: addedAmount } },
+          { session }
+        );
+      } else if (type === "plan_subscription") {
+        const user = await User.findById(userId).session(session);
+        if (user) {
+          activateSubscription(user, planId, billingCycle);
+          await user.save({ session });
+        }
+      }
+
+      await Transaction.findOneAndUpdate(
+        { paymentIntentId: paymentIntent.id },
+        { status: "succeeded" },
+        { upsert: true, session }
+      );
+
+      await session.commitTransaction();
+      console.log(`[Webhook] Successfully processed PaymentIntent: ${paymentIntent.id}`);
+    } 
+    else if (event.type === "payment_intent.payment_failed") {
+      const paymentIntent = event.data.object;
+      await Transaction.findOneAndUpdate(
+        { paymentIntentId: paymentIntent.id },
+        { 
+          status: "failed", 
+          failureReason: paymentIntent.last_payment_error?.message || "Payment failed" 
+        }
+      );
+      console.log(`[Webhook] Payment Failed for Intent: ${paymentIntent.id}`);
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    await session.abortTransaction();
+    console.error(`[Webhook Error] Execution failed: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -407,4 +554,5 @@ module.exports = {
   verifyAndSubscribePlan,
   getUserSubscription,
   handlePaymentFailure,
+  handleStripeWebhook,
 };

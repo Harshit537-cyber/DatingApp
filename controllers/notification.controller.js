@@ -52,6 +52,73 @@ const sendNotificationToSingleUser = async (req, res) => {
   }
 };
 
+const scheduleNotification = async (req, res) => {
+  try {
+    const { title, message, recipient, scheduledTime } = req.body;
+
+    if (!title || !message || !scheduledTime) {
+      return res.status(400).json({ message: "Title, message and scheduledTime are required" });
+    }
+
+    const delay = new Date(scheduledTime).getTime() - Date.now();
+
+    if (delay <= 0) {
+      return res.status(400).json({ message: "Scheduled time must be in the future" });
+    }
+
+    if (recipient) {
+      const userExists = await User.findById(recipient);
+      if (!userExists) {
+        return res.status(404).json({ message: "User not found" });
+      }
+    }
+
+    setTimeout(async () => {
+      try {
+        await Notification.create({
+          title,
+          message,
+          recipient: recipient || null,
+        });
+      } catch (err) {
+        console.error(err.message);
+      }
+    }, delay);
+
+    res.status(200).json({
+      message: "Notification scheduled successfully",
+      scheduledTime,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const resendNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existingNotification = await Notification.findById(id);
+
+    if (!existingNotification) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
+
+    const notification = await Notification.create({
+      title: existingNotification.title,
+      message: existingNotification.message,
+      recipient: existingNotification.recipient,
+    });
+
+    res.status(201).json({
+      message: "Notification resent successfully",
+      notification,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const getAdminSentNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find()
@@ -62,6 +129,22 @@ const getAdminSentNotifications = async (req, res) => {
       count: notifications.length,
       notifications,
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const deleteNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const notification = await Notification.findByIdAndDelete(id);
+
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
+
+    res.status(200).json({ message: "Notification deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -105,7 +188,10 @@ const clearUserNotifications = async (req, res) => {
 module.exports = {
   sendNotificationToAll,
   sendNotificationToSingleUser,
+  scheduleNotification,
+  resendNotification,
   getAdminSentNotifications,
+  deleteNotification,
   getUserNotifications,
   clearUserNotifications,
 };
