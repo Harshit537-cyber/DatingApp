@@ -14,14 +14,14 @@ const adminNotificationRoutes = require("./routes/admin.notification.routes");
 const userNotificationRoutes = require("./routes/user.notification.routes");
 const chatRoutes = require("./routes/chat.routes");
 
-// 1. Fixed casing: handleStripeWebhook (lowercase 'h')
+
 const { handleStripeWebhook } = require("./controllers/plan.controller");
 
 const app = express();
 
 app.use(cors());
 
-// 2. Webhook ko express.json() se PEHLE rakhein aur URL theek karein
+
 app.post(
   "/api/plans/stripe-webhook",
   express.raw({ type: "application/json" }),
