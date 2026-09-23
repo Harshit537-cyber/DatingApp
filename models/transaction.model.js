@@ -50,6 +50,8 @@ const transactionSchema = new mongoose.Schema(
       ref: 'Ticket', 
       default: null, 
     },
+    // models/transaction.model.js me add karein:
+platformFee: { type: Number, default: 0 },
     paymentMethod: {
       type: String,
       enum: ["stripe", "wallet"],

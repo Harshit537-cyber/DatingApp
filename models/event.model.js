@@ -6,6 +6,11 @@ const ticketTierSchema = new mongoose.Schema(
     price: { type: Number, required: true },
     available: { type: Number, default: 100 },
     sold: { type: Number, default: 0 },
+    // --- B10: Naya field add kiya gaya hai ---
+    allowedWristbands: {
+      type: [String],
+      default: ['the_one', 'open', 'good_time', 'vip_access'],
+    },
   },
   { _id: false }
 );
@@ -29,8 +34,20 @@ const eventSchema = new mongoose.Schema(
     ticketTiers: {
       type: [ticketTierSchema],
       default: [
-        { name: 'standard', price: 49.99, available: 100, sold: 0 },
-        { name: 'vip', price: 99.99, available: 50, sold: 0 },
+        {
+          name: 'standard',
+          price: 49.99,
+          available: 100,
+          sold: 0,
+          allowedWristbands: ['the_one', 'open', 'good_time'],
+        },
+        {
+          name: 'vip',
+          price: 99.99,
+          available: 50,
+          sold: 0,
+          allowedWristbands: ['the_one', 'open', 'good_time', 'vip_access'],
+        },
       ],
     },
     status: {

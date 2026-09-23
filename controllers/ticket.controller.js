@@ -3,8 +3,11 @@ const mongoose = require('mongoose');
 const Event = require('../models/event.model');
 const Ticket = require('../models/ticket.model');
 const Transaction = require('../models/transaction.model');
+const User = require('../models/user.model');
 
-// POST /api/tickets/purchase
+const PLATFORM_COMMISSION_RATE = 0.15; // 15% platform fee
+
+// POST /api/tickets/purchase (B3 & B10)
 const purchaseTicket = async (req, res) => {
   try {
     const { eventId, ticketTier, wristbandType } = req.body;
@@ -15,17 +18,6 @@ const purchaseTicket = async (req, res) => {
         success: false,
         message: 'eventId, ticketTier, and wristbandType are required.',
       });
-    }
-
-    const validTiers = ['standard', 'vip'];
-    const validWristbands = ['the_one', 'open', 'good_time', 'vip_access'];
-
-    if (!validTiers.includes(ticketTier)) {
-      return res.status(400).json({ success: false, message: 'Invalid ticket tier.' });
-    }
-
-    if (!validWristbands.includes(wristbandType)) {
-      return res.status(400).json({ success: false, message: 'Invalid wristband type.' });
     }
 
     const event = await Event.findById(eventId);
@@ -41,6 +33,14 @@ const purchaseTicket = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Ticket tier not available.' });
     }
 
+    // B10: Wristband - Tier Mapping Validation
+    if (tier.allowedWristbands && !tier.allowedWristbands.includes(wristbandType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This wristband is not available for the selected ticket tier.',
+      });
+    }
+
     if (tier.sold >= tier.available) {
       return res.status(400).json({ success: false, message: 'Tickets sold out.' });
     }
@@ -54,18 +54,33 @@ const purchaseTicket = async (req, res) => {
     if (existing) {
       return res.status(400).json({
         success: false,
-        message: 'You already have a ticket for this event.',
+        message: 'You already have an active or pending ticket for this event.',
       });
     }
 
+    // B3: Stripe Connect check for Host
+    const host = await User.findById(event.hostedBy);
+    if (!host || !host.stripeConnectAccountId || !host.payoutsEnabled) {
+      return res.status(400).json({
+        success: false,
+        message: 'Host payouts are not set up for this event yet.',
+      });
+    }
+
+    const amountCents = Math.round(tier.price * 100);
+    const applicationFeeCents = Math.round(amountCents * PLATFORM_COMMISSION_RATE);
+
+    // Destination charge: Split at source
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(tier.price * 100),
+      amount: amountCents,
       currency: 'usd',
+      application_fee_amount: applicationFeeCents,
+      transfer_data: { destination: host.stripeConnectAccountId },
       metadata: {
-        userId: userId.toString(),
         eventId: eventId.toString(),
         ticketTier,
         wristbandType,
+        userId: userId.toString(),
         type: 'ticket_purchase',
       },
     });
@@ -74,6 +89,7 @@ const purchaseTicket = async (req, res) => {
       user: userId,
       type: 'ticket_purchase',
       amount: tier.price,
+      platformFee: applicationFeeCents / 100,
       currency: 'usd',
       status: 'pending',
       paymentIntentId: paymentIntent.id,
@@ -92,7 +108,7 @@ const purchaseTicket = async (req, res) => {
   }
 };
 
-// POST /api/tickets/confirm
+// POST /api/tickets/confirm (B5: Atomic Oversell Prevention)
 const confirmTicketPurchase = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -128,18 +144,49 @@ const confirmTicketPurchase = async (req, res) => {
     }
 
     const { eventId, ticketTier, wristbandType } = paymentIntent.metadata;
-    const event = await Event.findById(eventId).session(session);
 
+    const event = await Event.findById(eventId).session(session);
     if (!event) {
       await session.abortTransaction();
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
 
-    const tierIndex = event.ticketTiers.findIndex((t) => t.name === ticketTier);
-    event.ticketTiers[tierIndex].sold += 1;
-    await event.save({ session });
+    const tier = event.ticketTiers.find((t) => t.name === ticketTier);
+    if (!tier) {
+      await session.abortTransaction();
+      return res.status(400).json({ success: false, message: 'Tier not found.' });
+    }
 
-    const tier = event.ticketTiers[tierIndex];
+    // B5: Atomic conditional increment to prevent overselling
+    const updatedEvent = await Event.findOneAndUpdate(
+      {
+        _id: eventId,
+        ticketTiers: {
+          $elemMatch: {
+            name: ticketTier,
+            sold: { $lt: tier.available },
+          },
+        },
+      },
+      {
+        $inc: { 'ticketTiers.$.sold': 1 },
+      },
+      { new: true, session }
+    );
+
+    if (!updatedEvent) {
+      await session.abortTransaction();
+      // Auto-refund payment if oversold
+      try {
+        await stripe.refunds.create({ payment_intent: paymentIntentId });
+      } catch (refundErr) {
+        console.error('Auto-refund failed:', refundErr.message);
+      }
+      return res.status(409).json({
+        success: false,
+        message: 'Tickets sold out — payment has been refunded.',
+      });
+    }
 
     const [ticket] = await Ticket.create(
       [
@@ -180,7 +227,7 @@ const getMyTickets = async (req, res) => {
       attendee: req.user._id,
       status: { $ne: 'cancelled' },
     })
-      .populate('event', 'title dateText eventDate location image')
+      .populate('event', 'title dateText eventDate location image hostedBy')
       .sort({ createdAt: -1 });
 
     return res.status(200).json({ success: true, data: tickets });
@@ -189,7 +236,7 @@ const getMyTickets = async (req, res) => {
   }
 };
 
-// POST /api/tickets/validate (used at event door: scan QR)
+// POST /api/tickets/validate (B4: Door Scan Restricted to Host)
 const validateTicket = async (req, res) => {
   try {
     const { qrPayload } = req.body;
@@ -200,10 +247,19 @@ const validateTicket = async (req, res) => {
 
     const ticket = await Ticket.findOne({ qrPayload })
       .populate('attendee', 'name profilePic')
-      .populate('event', 'title');
+      .populate('event', 'title hostedBy');
 
     if (!ticket) {
       return res.status(404).json({ success: false, valid: false, message: 'Ticket not found.' });
+    }
+
+    // B4: Security fix — only the actual host can validate
+    if (String(ticket.event.hostedBy) !== String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        valid: false,
+        message: 'Only the event host can scan tickets for this event.',
+      });
     }
 
     if (ticket.status !== 'active') {
@@ -211,7 +267,11 @@ const validateTicket = async (req, res) => {
     }
 
     if (ticket.isScanned) {
-      return res.status(400).json({ success: false, valid: false, message: 'Ticket already scanned.' });
+      return res.status(400).json({
+        success: false,
+        valid: false,
+        message: 'Ticket already scanned.',
+      });
     }
 
     ticket.isScanned = true;

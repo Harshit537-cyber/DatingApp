@@ -222,6 +222,9 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // models/user.model.js me add karein:
+stripeConnectAccountId: { type: String, default: null },
+payoutsEnabled: { type: Boolean, default: false },
     hostApplicationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "HostApplication",

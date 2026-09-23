@@ -36,6 +36,11 @@ const ticketSchema = new mongoose.Schema(
       enum: ['pending', 'active', 'cancelled', 'refunded'],
       default: 'pending',
     },
+    // models/ticket.model.js me add karein:
+purchaseExpiresAt: { 
+  type: Date, 
+  default: () => new Date(Date.now() + 15 * 60 * 1000) // 15 mins expiry
+},
     paymentIntentId: { type: String, required: true, unique: true },
     currency: { type: String, default: 'usd' },
   },

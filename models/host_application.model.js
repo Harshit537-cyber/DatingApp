@@ -9,6 +9,8 @@ const hostApplicationSchema = new mongoose.Schema(
       unique: true,
     },
     eventConcept: { type: String, required: true, trim: true },
+  
+govIdImage: { type: String, default: '' },
     govIdNote: { type: String, default: '' },
     status: {
       type: String,

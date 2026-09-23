@@ -30,7 +30,7 @@ app.post(
   handleStripeWebhook
 );
 
-//  Global express.json() parser
+// Global express.json() parser
 app.use(express.json());
 
 // Routes Mounting
@@ -42,7 +42,7 @@ app.use("/api/matches", matchRoutes);
 app.use("/api/circle", circleRoutes);
 app.use("/api/notifications", userNotificationRoutes);
 
-// ---  Mount Host and Ticket Routes ---
+// --- Mount Host and Ticket Routes ---
 app.use("/api/host", hostRoutes);
 app.use("/api/tickets", ticketRoutes);
 
@@ -55,5 +55,9 @@ app.use("/api/admin/notifications", adminNotificationRoutes);
 
 // Chat Routes
 app.use("/api/chats", chatRoutes);
+
+// --- Background Cron Jobs (v2 Cleanup & Re-verification) ---
+require("./jobs/expirePendingTickets.job");
+require("./jobs/flagReVerification.job");
 
 module.exports = app;

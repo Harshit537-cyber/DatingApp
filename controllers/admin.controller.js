@@ -550,17 +550,20 @@ const getPendingHostApplications = async (req, res) => {
 const approveHostApplication = async (req, res) => {
   try {
     const { id } = req.params;
-    const { adminNote } = req.body;
+    const { adminNote } = req.body || {};
 
     const application = await HostApplication.findById(id);
     if (!application) {
       return res.status(404).json({ success: false, message: 'Application not found.' });
     }
 
+    // Safely check req.user or req.admin
+    const adminId = req.user?._id || req.admin?._id || null;
+
     application.status = 'approved';
     application.adminNote = adminNote || '';
     application.reviewedAt = new Date();
-    application.reviewedBy = req.user._id;
+    application.reviewedBy = adminId;
     await application.save();
 
     await User.findByIdAndUpdate(application.applicant, {
@@ -577,17 +580,20 @@ const approveHostApplication = async (req, res) => {
 const rejectHostApplication = async (req, res) => {
   try {
     const { id } = req.params;
-    const { adminNote } = req.body;
+    const { adminNote } = req.body || {};
 
     const application = await HostApplication.findById(id);
     if (!application) {
       return res.status(404).json({ success: false, message: 'Application not found.' });
     }
 
+    // Safely check req.user or req.admin
+    const adminId = req.user?._id || req.admin?._id || null;
+
     application.status = 'rejected';
     application.adminNote = adminNote || '';
     application.reviewedAt = new Date();
-    application.reviewedBy = req.user._id;
+    application.reviewedBy = adminId;
     await application.save();
 
     await User.findByIdAndUpdate(application.applicant, {
