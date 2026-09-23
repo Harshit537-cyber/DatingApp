@@ -4,7 +4,7 @@ const Support = require("../models/support.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const exceljs = require("exceljs");
-
+const HostApplication = require('../models/host_application.model');
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: "30d",
@@ -534,7 +534,71 @@ const getUserStatsAndUnmatchedUsers = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+const getPendingHostApplications = async (req, res) => {
+  try {
+    const { status = 'pending_review' } = req.query;
+    const applications = await HostApplication.find({ status })
+      .populate('applicant', 'name email profilePic phone')
+      .sort({ createdAt: -1 });
 
+    return res.status(200).json({ success: true, count: applications.length, data: applications });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const approveHostApplication = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { adminNote } = req.body;
+
+    const application = await HostApplication.findById(id);
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Application not found.' });
+    }
+
+    application.status = 'approved';
+    application.adminNote = adminNote || '';
+    application.reviewedAt = new Date();
+    application.reviewedBy = req.user._id;
+    await application.save();
+
+    await User.findByIdAndUpdate(application.applicant, {
+      hostStatus: 'approved',
+      isVerifiedHost: true,
+    });
+
+    return res.status(200).json({ success: true, message: 'Host approved.', data: application });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const rejectHostApplication = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { adminNote } = req.body;
+
+    const application = await HostApplication.findById(id);
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Application not found.' });
+    }
+
+    application.status = 'rejected';
+    application.adminNote = adminNote || '';
+    application.reviewedAt = new Date();
+    application.reviewedBy = req.user._id;
+    await application.save();
+
+    await User.findByIdAndUpdate(application.applicant, {
+      hostStatus: 'rejected',
+    });
+
+    return res.status(200).json({ success: true, message: 'Host rejected.', data: application });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 module.exports = {
   registerAdmin,
   loginAdmin,
@@ -552,5 +616,8 @@ module.exports = {
   exportUsersToExcel,
   getHelpRequests,
   resolveHelpRequest,
-  getUserStatsAndUnmatchedUsers 
+  getUserStatsAndUnmatchedUsers,
+  getPendingHostApplications,
+  approveHostApplication,
+  rejectHostApplication,
 };

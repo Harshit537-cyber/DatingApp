@@ -20,7 +20,10 @@ const {
   exportUsersToExcel,
   getHelpRequests,
   resolveHelpRequest,
-  getUserStatsAndUnmatchedUsers
+  getUserStatsAndUnmatchedUsers,
+  getPendingHostApplications,
+approveHostApplication,
+rejectHostApplication
 } = require("../controllers/admin.controller");
 
 const {
@@ -57,5 +60,7 @@ router.patch("/help-requests/:id/resolve", resolveHelpRequest);
 router.get("/reports/history", getReportHistory);
 
 router.get("/users/analytics/unmatched", getUserStatsAndUnmatchedUsers);
-
+router.get('/host-applications', getPendingHostApplications);
+router.patch('/host-applications/:id/approve', approveHostApplication);
+router.patch('/host-applications/:id/reject', rejectHostApplication);
 module.exports = router;

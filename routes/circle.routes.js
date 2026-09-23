@@ -17,7 +17,7 @@ const {
 router.get("/dashboard", protect, getCircleDashboard);
 router.post("/connect/:targetUserId", protect, connectWithUser);
 
-router.post("/events", upload.single("image"), createEvent);
+router.post('/events', protect, upload.single('image'), createEvent);
 router.get("/events", protect, getEvents);
 
 router.post("/discussions", protect, createDiscussion);

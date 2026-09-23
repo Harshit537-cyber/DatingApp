@@ -14,6 +14,9 @@ const adminNotificationRoutes = require("./routes/admin.notification.routes");
 const userNotificationRoutes = require("./routes/user.notification.routes");
 const chatRoutes = require("./routes/chat.routes");
 
+// --- New Routes Added ---
+const hostRoutes = require("./routes/host.routes");
+const ticketRoutes = require("./routes/ticket.routes");
 
 const { handleStripeWebhook } = require("./controllers/plan.controller");
 
@@ -21,14 +24,13 @@ const app = express();
 
 app.use(cors());
 
-
 app.post(
   "/api/plans/stripe-webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-// 3. Global express.json() parser
+//  Global express.json() parser
 app.use(express.json());
 
 // Routes Mounting
@@ -40,6 +42,10 @@ app.use("/api/matches", matchRoutes);
 app.use("/api/circle", circleRoutes);
 app.use("/api/notifications", userNotificationRoutes);
 
+// ---  Mount Host and Ticket Routes ---
+app.use("/api/host", hostRoutes);
+app.use("/api/tickets", ticketRoutes);
+
 // Admin Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/users-manage", adminRoutes);
@@ -47,8 +53,7 @@ app.use("/api/admin/plans-manage", adminPlanRoutes);
 app.use("/api/admin/match-manage", adminMatchRoutes);
 app.use("/api/admin/notifications", adminNotificationRoutes);
 
-
-//Chat Routes
+// Chat Routes
 app.use("/api/chats", chatRoutes);
 
 module.exports = app;

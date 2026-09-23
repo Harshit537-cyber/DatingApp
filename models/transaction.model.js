@@ -9,7 +9,7 @@ const transactionSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["wallet_topup", "plan_subscription"],
+      enum: ['wallet_topup', 'plan_subscription', 'ticket_purchase'],
       required: true,
     },
     amount: {
@@ -39,6 +39,16 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       enum: ["monthly", "annual", null],
       default: null,
+    },
+    event: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'Event', 
+      default: null, 
+    }, 
+    ticket: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'Ticket', 
+      default: null, 
     },
     paymentMethod: {
       type: String,

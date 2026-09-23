@@ -212,6 +212,21 @@ const userSchema = new mongoose.Schema(
         default: true,
       },
     },
+    // --- Step 2: Added Host Fields Below ---
+    hostStatus: {
+      type: String,
+      enum: ["none", "pending", "approved", "rejected"],
+      default: "none",
+    },
+    isVerifiedHost: {
+      type: Boolean,
+      default: false,
+    },
+    hostApplicationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "HostApplication",
+      default: null,
+    },
   },
   {
     timestamps: true,
