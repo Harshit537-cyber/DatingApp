@@ -1,8 +1,10 @@
+// DatingApp/controllers/auth.controller.js
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../config/cloudinary");
 const Support = require("../models/support.model");
+const { auth } = require("../config/firebase"); // Updated modern firebase import
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -31,6 +33,81 @@ const parseAgePreference = (input) => {
   return { min: 18, max: 80 };
 };
 
+// ==========================================
+// GOOGLE AUTH CONTROLLER (FIREBASE VERIFICATION)
+// ==========================================
+const googleLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    
+    console.log("\n=================== GOOGLE AUTH START ===================");
+    console.log("👉 Google Auth API call received!");
+    console.log("👉 Received Token:", idToken ? "Exists (Token passed)" : "Empty");
+
+    if (!idToken) {
+      console.log("❌ Error: No ID Token found in request body");
+      return res.status(400).json({ message: "Firebase ID token is required" });
+    }
+
+    // 1. Verify token with Firebase Admin SDK
+    console.log("🔄 Verifying token with Firebase Admin SDK...");
+    const decodedToken = await auth.verifyIdToken(idToken);
+    const { email, name, picture } = decodedToken;
+    console.log("✅ Token verified successfully! User Info:", { Name: name, Email: email });
+
+    // 2. Check Database for user
+    let user = await User.findOne({ email });
+    let isNewUser = false;
+
+    if (!user) {
+      isNewUser = true;
+      console.log("👤 New user detected! Creating a new database record...");
+      
+      const randomPassword = Math.random().toString(36).slice(-10);
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      user = await User.create({
+        name,
+        email,
+        password: hashedPassword,
+        profilePic: picture || "",
+        gender: null,
+        age: null,
+        location: {
+          type: "Point",
+          coordinates: [0, 0],
+        },
+      });
+      console.log("🆕 New user registered in MongoDB with ID:", user._id);
+    } else {
+      console.log("🔄 Existing user found in MongoDB with ID:", user._id);
+      if (!user.gender || !user.age) {
+        isNewUser = true;
+        console.log("⚠️ Existing profile is incomplete (requires onboarding).");
+      }
+    }
+
+    console.log("🚀 Response sent to Frontend successfully!");
+    console.log("==================== GOOGLE AUTH END ====================\n");
+
+    res.status(200).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      gender: user.gender,
+      profilePic: user.profilePic,
+      token: generateToken(user._id),
+      isNewUser,
+    });
+
+  } catch (error) {
+    console.error("❌ Google Auth Verification Failed:", error.message);
+    console.log("=========================================================\n");
+    res.status(500).json({ message: "Google authentication failed: " + error.message });
+  }
+};
+
 const registerUser = async (req, res) => {
   try {
     const {
@@ -53,7 +130,6 @@ const registerUser = async (req, res) => {
       interests,
       lifestyle,
       languages,
-      phone,
     } = req.body;
 
     const userExists = await User.findOne({ email });
@@ -130,7 +206,6 @@ const registerUser = async (req, res) => {
     const user = await User.create({
       name,
       email,
-      phone,
       password: hashedPassword,
       gender,
       interestedIn,
@@ -192,7 +267,7 @@ const loginUser = async (req, res) => {
 
 const deleteAccount = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
     const user = await User.findById(userId);
 
     if (!user) {
@@ -200,6 +275,7 @@ const deleteAccount = async (req, res) => {
     }
 
     await User.findByIdAndDelete(userId);
+
     res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -208,7 +284,7 @@ const deleteAccount = async (req, res) => {
 
 const deactivateAccount = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
     const { reason } = req.body;
 
     if (!reason) {
@@ -218,6 +294,7 @@ const deactivateAccount = async (req, res) => {
     }
 
     const user = await User.findById(userId);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -225,6 +302,7 @@ const deactivateAccount = async (req, res) => {
     user.isDeactivated = true;
     user.deactivateReason = reason;
     user.deactivatedAt = new Date();
+
     await user.save();
 
     res.status(200).json({
@@ -256,7 +334,7 @@ const getProfileById = async (req, res) => {
 
 const activateAccount = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
     const user = await User.findById(userId);
 
     if (!user) {
@@ -266,6 +344,7 @@ const activateAccount = async (req, res) => {
     user.isDeactivated = false;
     user.deactivateReason = null;
     user.deactivatedAt = null;
+
     await user.save();
 
     res.status(200).json({ message: "Account activated successfully" });
@@ -276,10 +355,11 @@ const activateAccount = async (req, res) => {
 
 const hideProfile = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
     const { days } = req.body;
 
     const allowedDays = [1, 7, 30];
+
     if (!allowedDays.includes(Number(days))) {
       return res.status(400).json({
         message: "Please select only 1, 7 or 30 days",
@@ -287,6 +367,7 @@ const hideProfile = async (req, res) => {
     }
 
     const user = await User.findById(userId);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -296,6 +377,7 @@ const hideProfile = async (req, res) => {
 
     user.isProfileHidden = true;
     user.profileHiddenUntil = hideUntil;
+
     await user.save();
 
     res.status(200).json({
@@ -309,7 +391,7 @@ const hideProfile = async (req, res) => {
 
 const unhideProfile = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
     const user = await User.findById(userId);
 
     if (!user) {
@@ -318,6 +400,7 @@ const unhideProfile = async (req, res) => {
 
     user.isProfileHidden = false;
     user.profileHiddenUntil = null;
+
     await user.save();
 
     res.status(200).json({ message: "Profile unhidden successfully" });
@@ -328,7 +411,7 @@ const unhideProfile = async (req, res) => {
 
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id || req.user._id).select("-password");
+    const user = await User.findById(req.user.id).select("-password");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -338,46 +421,29 @@ const getMe = async (req, res) => {
   }
 };
 
-// Release Blocker Fix: Mass Assignment Guarded updateProfile
 const updateProfile = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
+    const updates = { ...req.body };
 
-    // Strict Allowlist: Privileged fields like isVerifiedHost, hostStatus, walletBalance are NOT allowed
-    const ALLOWED_FIELDS = [
-      "name",
-      "gender",
-      "interestedIn",
-      "age",
-      "bio",
-      "jobTitle",
-      "company",
-      "school",
-      "livingIn",
-      "height",
-      "phone",
-    ];
+    delete updates.password;
+    delete updates.email;
 
-    const updates = {};
-    for (const field of ALLOWED_FIELDS) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
-      }
-    }
-
-    if (req.body.longitude !== undefined && req.body.latitude !== undefined) {
+    if (updates.longitude !== undefined && updates.latitude !== undefined) {
       updates.location = {
         type: "Point",
-        coordinates: [Number(req.body.longitude), Number(req.body.latitude)],
+        coordinates: [Number(updates.longitude), Number(updates.latitude)],
       };
+      delete updates.longitude;
+      delete updates.latitude;
     }
 
-    if (req.body.distancePreference) {
-      updates.distancePreference = Number(req.body.distancePreference);
+    if (updates.distancePreference) {
+      updates.distancePreference = Number(updates.distancePreference);
     }
 
-    if (req.body.agePreference) {
-      updates.agePreference = parseAgePreference(req.body.agePreference);
+    if (updates.agePreference) {
+      updates.agePreference = parseAgePreference(updates.agePreference);
     }
 
     if (req.files) {
@@ -405,45 +471,45 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    if (req.body.interests) {
+    if (updates.interests) {
       try {
         updates.interests =
-          typeof req.body.interests === "string"
-            ? JSON.parse(req.body.interests)
-            : req.body.interests;
+          typeof updates.interests === "string"
+            ? JSON.parse(updates.interests)
+            : updates.interests;
       } catch (e) {
         updates.interests =
-          typeof req.body.interests === "string"
-            ? req.body.interests.split(",")
-            : req.body.interests;
+          typeof updates.interests === "string"
+            ? updates.interests.split(",")
+            : updates.interests;
       }
     }
 
-    if (req.body.lifestyle) {
+    if (updates.lifestyle) {
       try {
         updates.lifestyle =
-          typeof req.body.lifestyle === "string"
-            ? JSON.parse(req.body.lifestyle)
-            : req.body.lifestyle;
+          typeof updates.lifestyle === "string"
+            ? JSON.parse(updates.lifestyle)
+            : updates.lifestyle;
       } catch (e) {
         updates.lifestyle =
-          typeof req.body.lifestyle === "string"
-            ? req.body.lifestyle.split(",")
-            : req.body.lifestyle;
+          typeof updates.lifestyle === "string"
+            ? updates.lifestyle.split(",")
+            : updates.lifestyle;
       }
     }
 
-    if (req.body.languages) {
+    if (updates.languages) {
       try {
         updates.languages =
-          typeof req.body.languages === "string"
-            ? JSON.parse(req.body.languages)
-            : req.body.languages;
+          typeof updates.languages === "string"
+            ? JSON.parse(updates.languages)
+            : updates.languages;
       } catch (e) {
         updates.languages =
-          typeof req.body.languages === "string"
-            ? req.body.languages.split(",")
-            : req.body.languages;
+          typeof updates.languages === "string"
+            ? updates.languages.split(",")
+            : updates.languages;
       }
     }
 
@@ -463,7 +529,7 @@ const updateProfile = async (req, res) => {
 
 const submitHelpRequest = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
     const { subject, message, category } = req.body;
 
     if (!subject || !message) {
@@ -490,10 +556,8 @@ const submitHelpRequest = async (req, res) => {
 
 const getUserHelpRequests = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
-    const helpRequests = await Support.find({ user: userId }).sort({
-      createdAt: -1,
-    });
+    const userId = req.user.id;
+    const helpRequests = await Support.find({ user: userId }).sort({ createdAt: -1 });
 
     res.status(200).json({
       message: "Help requests fetched successfully",
@@ -507,7 +571,7 @@ const getUserHelpRequests = async (req, res) => {
 
 const getHelpRequestById = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId = req.user.id;
     const { id } = req.params;
 
     const helpRequest = await Support.findOne({ _id: id, user: userId });
@@ -525,6 +589,7 @@ const getHelpRequestById = async (req, res) => {
   }
 };
 
+
 const getAllUsersCount = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
@@ -537,9 +602,11 @@ const getAllUsersCount = async (req, res) => {
   }
 };
 
+
 module.exports = {
   registerUser,
   loginUser,
+  googleLogin, // Exported correctly for routes
   getMe,
   updateProfile,
   deleteAccount,
@@ -551,5 +618,5 @@ module.exports = {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
-  getAllUsersCount,
+  getAllUsersCount
 };

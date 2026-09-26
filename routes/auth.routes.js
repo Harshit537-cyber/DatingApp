@@ -1,14 +1,16 @@
+// DatingApp/routes/auth.routes.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 
-// Middleware Imports (Apne path ke hisab se adjust kar lein)
+// Middleware Imports
 const { protect } = require("../middleware/authMiddleware");
 
 // Controller Functions Import
 const {
   registerUser,
   loginUser,
+  googleLogin, // Imported Google Auth logic
   getMe,
   updateProfile,
   deleteAccount,
@@ -21,7 +23,7 @@ const {
   getUserHelpRequests,
   getHelpRequestById,
   getAllUsersCount
-} = require("../controllers/auth.controller"); // Path apne folder structure ke hisab se check kar lein
+} = require("../controllers/auth.controller");
 
 // Multer Config (Memory Storage for Cloudinary Uploads)
 const storage = multer.memoryStorage();
@@ -38,12 +40,13 @@ const photoUploads = upload.fields([
 // ==========================================
 router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
+router.post("/google-login", googleLogin); // Route registered
 
 
 // ==========================================
 // PROTECTED ROUTES (Requires JWT Auth Token)
 // ==========================================
-router.use(protect); // Iske niche ke saare routes me 'protect' middleware chalega
+router.use(protect); // Middleware runs for all routes below
 
 // Profile Routes
 router.get("/me", getMe);
