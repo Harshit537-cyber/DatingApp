@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { protectAdmin } = require("../middleware/authMiddleware");
 
 const {
   adminGetPlans,
@@ -13,6 +14,9 @@ const {
   adminGetPlatformStats,
   adminRemoveUserMatch,
 } = require("../controllers/adminMatch.controller");
+
+// 🔒 Apply Admin Auth to all routes
+router.use(protectAdmin);
 
 router.get("/plans", adminGetPlans);
 router.post("/plans", adminSavePlan);

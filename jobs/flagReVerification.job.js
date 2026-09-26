@@ -2,7 +2,6 @@ const cron = require('node-cron');
 const User = require('../models/user.model');
 const HostApplication = require('../models/host_application.model');
 
-// Har roz raat ko 3:00 AM chalega
 cron.schedule('0 3 * * *', async () => {
     try {
         const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);

@@ -1,10 +1,12 @@
 const Admin = require("../models/admin.model");
 const User = require("../models/user.model");
 const Support = require("../models/support.model");
+const HostApplication = require("../models/host_application.model");
+const cloudinary = require("../config/cloudinary");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const exceljs = require("exceljs");
-const HostApplication = require('../models/host_application.model');
+
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: "30d",
@@ -157,9 +159,11 @@ const verifyOtp = async (req, res) => {
   }
 };
 
+// Fixed to support protectAdmin (req.admin)
 const getAdminProfile = async (req, res) => {
   try {
-    const admin = await Admin.findById(req.user.id).select("-password");
+    const adminId = req.admin?._id || req.user?.id || req.user?._id;
+    const admin = await Admin.findById(adminId).select("-password");
     if (!admin) {
       return res.status(404).json({ message: "Admin not found" });
     }
@@ -222,14 +226,44 @@ const getUserById = async (req, res) => {
   }
 };
 
+// Mass Assignment Protection with Allowlist
 const updateUserByAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = { ...req.body };
+    const ALLOWED_ADMIN_UPDATES = [
+      "name",
+      "email",
+      "phone",
+      "gender",
+      "age",
+      "bio",
+      "jobTitle",
+      "company",
+      "school",
+      "livingIn",
+      "height",
+      "interests",
+      "lifestyle",
+      "languages",
+      "profilePic",
+      "additionalPhotos",
+      "isBanned",
+      "isVerified",
+      "walletBalance",
+      "hostStatus",
+      "isVerifiedHost",
+    ];
 
-    if (updates.password) {
+    const updates = {};
+    for (const key of ALLOWED_ADMIN_UPDATES) {
+      if (req.body[key] !== undefined) {
+        updates[key] = req.body[key];
+      }
+    }
+
+    if (req.body.password) {
       const salt = await bcrypt.genSalt(10);
-      updates.password = await bcrypt.hash(updates.password, salt);
+      updates.password = await bcrypt.hash(req.body.password, salt);
     }
 
     const updatedUser = await User.findByIdAndUpdate(id, updates, {
@@ -298,12 +332,12 @@ const toggleUserStatus = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    user.isBlocked = !user.isBlocked;
+    user.isBanned = !user.isBanned;
     await user.save();
 
     res.status(200).json({
-      message: `User ${user.isBlocked ? "blocked" : "unblocked"} successfully`,
-      isBlocked: user.isBlocked,
+      message: `User ${user.isBanned ? "banned" : "unbanned"} successfully`,
+      isBanned: user.isBanned,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -340,7 +374,7 @@ const exportUsersToExcel = async (req, res) => {
       { header: "Email", key: "email", width: 30 },
       { header: "Gender", key: "gender", width: 15 },
       { header: "Age", key: "age", width: 10 },
-      { header: "Status", key: "isBlocked", width: 15 },
+      { header: "Status", key: "status", width: 15 },
       { header: "Created At", key: "createdAt", width: 25 },
     ];
 
@@ -351,7 +385,7 @@ const exportUsersToExcel = async (req, res) => {
         email: user.email || "",
         gender: user.gender || "",
         age: user.age || "",
-        isBlocked: user.isBlocked ? "Blocked" : "Active",
+        status: user.isBanned ? "Banned" : "Active",
         createdAt: user.createdAt
           ? new Date(user.createdAt).toLocaleString()
           : "",
@@ -378,7 +412,7 @@ const getHelpRequests = async (req, res) => {
   try {
     const helpRequests = await Support.find()
       .populate("user", "name email")
-      .sort({ createdAt: -1 }); // Fixed typo here (createdAt)
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       count: helpRequests.length,
@@ -410,6 +444,7 @@ const resolveHelpRequest = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 const getAllUserSubscriptions = async (req, res) => {
   try {
     const users = await User.find({
@@ -434,10 +469,8 @@ const getAllUserSubscriptions = async (req, res) => {
         : null,
 
       billingCycle: user.subscription?.billingCycle,
-
       startDate: user.subscription?.startDate,
       endDate: user.subscription?.endDate,
-
       isActive: user.subscription?.isActive,
     }));
 
@@ -453,6 +486,7 @@ const getAllUserSubscriptions = async (req, res) => {
     });
   }
 };
+
 const searchUser = async (req, res) => {
   try {
     const { search } = req.query;
@@ -504,11 +538,11 @@ const getUserStatsAndUnmatchedUsers = async (req, res) => {
       User.find({
         $or: [
           { matches: { $exists: false } },
-          { matches: { $size: 0 } }
-        ]
+          { matches: { $size: 0 } },
+        ],
       })
         .select("name email gender age profilePic createdAt")
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1 }),
     ]);
 
     const formattedUnmatchedUsers = unmatchedUsers.map((user) => ({
@@ -518,9 +552,13 @@ const getUserStatsAndUnmatchedUsers = async (req, res) => {
       gender: user.gender,
       age: user.age,
       profilePic: user.profilePic,
-      registeredDate: user.createdAt ? user.createdAt.toISOString().split("T")[0] : null,
-      registeredTime: user.createdAt ? user.createdAt.toTimeString().split(" ")[0] : null,
-      createdAt: user.createdAt
+      registeredDate: user.createdAt
+        ? user.createdAt.toISOString().split("T")[0]
+        : null,
+      registeredTime: user.createdAt
+        ? user.createdAt.toTimeString().split(" ")[0]
+        : null,
+      createdAt: user.createdAt,
     }));
 
     res.status(200).json({
@@ -528,20 +566,59 @@ const getUserStatsAndUnmatchedUsers = async (req, res) => {
       totalMaleUsers: maleCount,
       totalFemaleUsers: femaleCount,
       unmatchedUsersCount: formattedUnmatchedUsers.length,
-      unmatchedUsers: formattedUnmatchedUsers
+      unmatchedUsers: formattedUnmatchedUsers,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Host Application Management
 const getPendingHostApplications = async (req, res) => {
   try {
-    const { status = 'pending_review' } = req.query;
+    const { status = "pending_review" } = req.query;
     const applications = await HostApplication.find({ status })
-      .populate('applicant', 'name email profilePic phone')
+      .populate("applicant", "name email profilePic phone")
       .sort({ createdAt: -1 });
 
-    return res.status(200).json({ success: true, count: applications.length, data: applications });
+    return res
+      .status(200)
+      .json({ success: true, count: applications.length, data: applications });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Secure signed document download (Brief v3)
+const getHostApplicationDocument = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const application = await HostApplication.findById(id);
+
+    if (!application || !application.govIdImage) {
+      return res
+        .status(404)
+        .json({ success: false, message: "ID Document not found." });
+    }
+
+    // Extract Cloudinary public_id safely
+    const urlParts = application.govIdImage.split("/");
+    const filenameWithExt = urlParts.slice(-2).join("/"); // folder/name.ext
+    const publicId =
+      filenameWithExt.substring(0, filenameWithExt.lastIndexOf(".")) ||
+      filenameWithExt;
+
+    // Generate short-lived (10 mins) signed URL
+    const signedUrl = cloudinary.utils.private_download_url(publicId, "jpg", {
+      resource_type: "image",
+      type: "authenticated",
+      expires_at: Math.floor(Date.now() / 1000) + 600,
+    });
+
+    return res.status(200).json({
+      success: true,
+      url: signedUrl || application.govIdImage,
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -554,24 +631,27 @@ const approveHostApplication = async (req, res) => {
 
     const application = await HostApplication.findById(id);
     if (!application) {
-      return res.status(404).json({ success: false, message: 'Application not found.' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Application not found." });
     }
 
-    // Safely check req.user or req.admin
-    const adminId = req.user?._id || req.admin?._id || null;
+    const adminId = req.admin?._id || req.user?._id || req.user?.id || null;
 
-    application.status = 'approved';
-    application.adminNote = adminNote || '';
+    application.status = "approved";
+    application.adminNote = adminNote || "";
     application.reviewedAt = new Date();
     application.reviewedBy = adminId;
     await application.save();
 
     await User.findByIdAndUpdate(application.applicant, {
-      hostStatus: 'approved',
+      hostStatus: "approved",
       isVerifiedHost: true,
     });
 
-    return res.status(200).json({ success: true, message: 'Host approved.', data: application });
+    return res
+      .status(200)
+      .json({ success: true, message: "Host approved.", data: application });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -584,27 +664,32 @@ const rejectHostApplication = async (req, res) => {
 
     const application = await HostApplication.findById(id);
     if (!application) {
-      return res.status(404).json({ success: false, message: 'Application not found.' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Application not found." });
     }
 
-    // Safely check req.user or req.admin
-    const adminId = req.user?._id || req.admin?._id || null;
+    const adminId = req.admin?._id || req.user?._id || req.user?.id || null;
 
-    application.status = 'rejected';
-    application.adminNote = adminNote || '';
+    application.status = "rejected";
+    application.adminNote = adminNote || "";
     application.reviewedAt = new Date();
     application.reviewedBy = adminId;
     await application.save();
 
     await User.findByIdAndUpdate(application.applicant, {
-      hostStatus: 'rejected',
+      hostStatus: "rejected",
+      isVerifiedHost: false,
     });
 
-    return res.status(200).json({ success: true, message: 'Host rejected.', data: application });
+    return res
+      .status(200)
+      .json({ success: true, message: "Host rejected.", data: application });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 module.exports = {
   registerAdmin,
   loginAdmin,
@@ -622,8 +707,11 @@ module.exports = {
   exportUsersToExcel,
   getHelpRequests,
   resolveHelpRequest,
+  getAllUserSubscriptions,
+  searchUser,
   getUserStatsAndUnmatchedUsers,
   getPendingHostApplications,
+  getHostApplicationDocument,
   approveHostApplication,
   rejectHostApplication,
 };

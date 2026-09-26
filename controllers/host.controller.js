@@ -3,13 +3,12 @@ const cloudinary = require('../config/cloudinary');
 const User = require('../models/user.model');
 const HostApplication = require('../models/host_application.model');
 
-const HOST_APPLICATION_FEE_CENTS = 2500; // $25
-
-// B7: Create Application Fee Payment Intent
+// B7: Create Host Application Fee Payment Intent ($25)
 const createApplicationFeeIntent = async (req, res) => {
   try {
+    const feeCents = Number(process.env.HOST_APPLICATION_FEE_CENTS) || 2500;
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: HOST_APPLICATION_FEE_CENTS,
+      amount: feeCents,
       currency: 'usd',
       metadata: {
         purpose: 'host_application_fee',
@@ -29,7 +28,7 @@ const createApplicationFeeIntent = async (req, res) => {
   }
 };
 
-// B1 & B7: Apply to become host (with ID upload & Fee check)
+// B1 & B7: Apply to Host (Private ID upload + Durable Fee Verification)
 const applyToHost = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -39,31 +38,43 @@ const applyToHost = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Event concept is required.' });
     }
 
-    // B7: Verify application fee payment
     if (!paymentIntentId) {
       return res.status(400).json({ success: false, message: 'Application fee paymentIntentId is required.' });
     }
 
+    const feeCents = Number(process.env.HOST_APPLICATION_FEE_CENTS) || 2500;
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
     if (
       paymentIntent.status !== 'succeeded' ||
+      paymentIntent.amount !== feeCents ||
+      paymentIntent.currency !== 'usd' ||
       paymentIntent.metadata.userId !== userId.toString() ||
       paymentIntent.metadata.purpose !== 'host_application_fee'
     ) {
-      return res.status(400).json({ success: false, message: 'Application fee has not been successfully completed.' });
+      return res.status(400).json({ success: false, message: 'Invalid or incomplete application fee payment.' });
     }
 
-    // B1: Handle Gov ID file upload to Cloudinary
+    // Check if this PaymentIntent was already consumed
+    const alreadyUsed = await HostApplication.findOne({ applicationFeePaymentIntentId: paymentIntentId });
+    if (alreadyUsed) {
+      return res.status(400).json({ success: false, message: 'This application fee has already been used.' });
+    }
+
+    // Private ID Upload to Cloudinary
     let govIdImageUrl = '';
     if (req.file) {
       const b64 = Buffer.from(req.file.buffer).toString('base64');
       const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-      const result = await cloudinary.uploader.upload(dataURI, { folder: 'host_id_docs' });
+      const result = await cloudinary.uploader.upload(dataURI, {
+        folder: 'host_id_docs',
+        type: 'authenticated', // Secure access
+      });
       govIdImageUrl = result.secure_url;
     }
 
     if (!govIdImageUrl) {
-      return res.status(400).json({ success: false, message: 'Gov ID document image is required.' });
+      return res.status(400).json({ success: false, message: 'Government ID image is required.' });
     }
 
     const existing = await HostApplication.findOne({ applicant: userId });
@@ -80,6 +91,7 @@ const applyToHost = async (req, res) => {
       existing.eventConcept = eventConcept.trim();
       existing.govIdNote = govIdNote || '';
       existing.govIdImage = govIdImageUrl;
+      existing.applicationFeePaymentIntentId = paymentIntentId;
       existing.status = 'pending_review';
       existing.adminNote = '';
       existing.reviewedAt = null;
@@ -91,6 +103,7 @@ const applyToHost = async (req, res) => {
         eventConcept: eventConcept.trim(),
         govIdNote: govIdNote || '',
         govIdImage: govIdImageUrl,
+        applicationFeePaymentIntentId: paymentIntentId,
       });
     }
 
@@ -105,11 +118,10 @@ const applyToHost = async (req, res) => {
   }
 };
 
-// Get host status
 const getHostStatus = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select(
-      'hostStatus isVerifiedHost hostApplicationId stripeConnectAccountId payoutsEnabled'
+      'hostStatus isVerifiedHost hostApplicationId stripeConnectAccountId payoutsEnabled chargesEnabled stripeAccountStatus'
     );
 
     const application = user.hostApplicationId
@@ -122,6 +134,8 @@ const getHostStatus = async (req, res) => {
         hostStatus: user.hostStatus,
         isVerifiedHost: user.isVerifiedHost,
         payoutsEnabled: user.payoutsEnabled,
+        chargesEnabled: user.chargesEnabled,
+        stripeAccountStatus: user.stripeAccountStatus,
         application,
       },
     });
@@ -130,23 +144,30 @@ const getHostStatus = async (req, res) => {
   }
 };
 
-// B2: Host Stripe Connect Express onboarding
+// B2 & v3: Idempotent Stripe Connect Express Onboarding
 const createPayoutAccount = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    if (!user.isVerifiedHost) {
-      return res.status(403).json({ success: false, message: 'Host verification required first.' });
+    if (!user.isVerifiedHost || user.hostStatus !== 'approved') {
+      return res.status(403).json({ success: false, message: 'Verified host status required.' });
     }
 
     let accountId = user.stripeConnectAccountId;
     if (!accountId) {
-      const account = await stripe.accounts.create({
-        type: 'express',
-        email: user.email,
-      });
+      const locked = await User.findOneAndUpdate(
+        { _id: user._id, stripeConnectAccountId: null },
+        { stripeAccountStatus: 'onboarding_pending' },
+        { new: true }
+      );
+
+      if (!locked) {
+        return res.status(409).json({ success: false, message: 'Onboarding already in progress.' });
+      }
+
+      const account = await stripe.accounts.create({ type: 'express', email: user.email });
       accountId = account.id;
-      user.stripeConnectAccountId = accountId;
-      await user.save();
+      locked.stripeConnectAccountId = accountId;
+      await locked.save();
     }
 
     const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5000';
@@ -163,23 +184,38 @@ const createPayoutAccount = async (req, res) => {
   }
 };
 
-// B2: Get payout status
+// Live Payout Status
 const getPayoutStatus = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user.stripeConnectAccountId) {
-      return res.status(200).json({ success: true, data: { status: 'not_started' } });
+      return res.status(200).json({
+        success: true,
+        data: { status: 'not_started', payoutsEnabled: false, chargesEnabled: false },
+      });
     }
 
     const account = await stripe.accounts.retrieve(user.stripeConnectAccountId);
     user.payoutsEnabled = !!account.payouts_enabled;
+    user.chargesEnabled = !!account.charges_enabled;
+    user.detailsSubmitted = !!account.details_submitted;
+    user.stripeRequirementsDue = account.requirements?.currently_due || [];
+    user.stripeAccountStatus = account.charges_enabled
+      ? 'active'
+      : account.details_submitted
+      ? 'restricted'
+      : 'onboarding_pending';
+    user.stripeStateUpdatedAt = new Date();
     await user.save();
 
     return res.status(200).json({
       success: true,
       data: {
-        status: account.payouts_enabled ? 'active' : 'pending',
+        status: user.stripeAccountStatus,
         payoutsEnabled: account.payouts_enabled,
+        chargesEnabled: account.charges_enabled,
+        detailsSubmitted: account.details_submitted,
+        requirementsDue: user.stripeRequirementsDue,
       },
     });
   } catch (error) {

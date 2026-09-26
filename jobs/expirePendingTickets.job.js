@@ -6,7 +6,7 @@ cron.schedule('*/5 * * * *', async () => {
   try {
     const result = await Ticket.deleteMany({
       status: 'pending',
-      purchaseExpiresAt: { $lt: new Date() },
+      purchaseExpiresAt: { $lt: new Date() },  
     });
 
     if (result.deletedCount > 0) {

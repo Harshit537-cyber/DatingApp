@@ -18,19 +18,29 @@ const chatRoutes = require("./routes/chat.routes");
 const hostRoutes = require("./routes/host.routes");
 const ticketRoutes = require("./routes/ticket.routes");
 
+// Webhook Handlers
 const { handleStripeWebhook } = require("./controllers/plan.controller");
+const { handleConnectWebhook } = require("./controllers/webhook.controller"); // <-- Added
 
 const app = express();
 
 app.use(cors());
 
+// 1. Plan Stripe Webhook (Raw body)
 app.post(
   "/api/plans/stripe-webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-// Global express.json() parser
+// 2. Stripe Connect Webhook (Raw body) <-- Added (Brief v3)
+app.post(
+  "/api/webhooks/stripe/connect",
+  express.raw({ type: "application/json" }),
+  handleConnectWebhook
+);
+
+// Global express.json() parser (Webhooks ke baad hona chahiye)
 app.use(express.json());
 
 // Routes Mounting
@@ -56,7 +66,7 @@ app.use("/api/admin/notifications", adminNotificationRoutes);
 // Chat Routes
 app.use("/api/chats", chatRoutes);
 
-// --- Background Cron Jobs (v2 Cleanup & Re-verification) ---
+// --- Background Cron Jobs (v2/v3 Cleanup & Re-verification) ---
 require("./jobs/expirePendingTickets.job");
 require("./jobs/flagReVerification.job");
 

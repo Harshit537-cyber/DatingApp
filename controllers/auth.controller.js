@@ -53,6 +53,7 @@ const registerUser = async (req, res) => {
       interests,
       lifestyle,
       languages,
+      phone,
     } = req.body;
 
     const userExists = await User.findOne({ email });
@@ -129,6 +130,7 @@ const registerUser = async (req, res) => {
     const user = await User.create({
       name,
       email,
+      phone,
       password: hashedPassword,
       gender,
       interestedIn,
@@ -190,7 +192,7 @@ const loginUser = async (req, res) => {
 
 const deleteAccount = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const user = await User.findById(userId);
 
     if (!user) {
@@ -198,7 +200,6 @@ const deleteAccount = async (req, res) => {
     }
 
     await User.findByIdAndDelete(userId);
-
     res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -207,7 +208,7 @@ const deleteAccount = async (req, res) => {
 
 const deactivateAccount = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const { reason } = req.body;
 
     if (!reason) {
@@ -217,7 +218,6 @@ const deactivateAccount = async (req, res) => {
     }
 
     const user = await User.findById(userId);
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -225,7 +225,6 @@ const deactivateAccount = async (req, res) => {
     user.isDeactivated = true;
     user.deactivateReason = reason;
     user.deactivatedAt = new Date();
-
     await user.save();
 
     res.status(200).json({
@@ -257,7 +256,7 @@ const getProfileById = async (req, res) => {
 
 const activateAccount = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const user = await User.findById(userId);
 
     if (!user) {
@@ -267,7 +266,6 @@ const activateAccount = async (req, res) => {
     user.isDeactivated = false;
     user.deactivateReason = null;
     user.deactivatedAt = null;
-
     await user.save();
 
     res.status(200).json({ message: "Account activated successfully" });
@@ -278,11 +276,10 @@ const activateAccount = async (req, res) => {
 
 const hideProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const { days } = req.body;
 
     const allowedDays = [1, 7, 30];
-
     if (!allowedDays.includes(Number(days))) {
       return res.status(400).json({
         message: "Please select only 1, 7 or 30 days",
@@ -290,7 +287,6 @@ const hideProfile = async (req, res) => {
     }
 
     const user = await User.findById(userId);
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -300,7 +296,6 @@ const hideProfile = async (req, res) => {
 
     user.isProfileHidden = true;
     user.profileHiddenUntil = hideUntil;
-
     await user.save();
 
     res.status(200).json({
@@ -314,7 +309,7 @@ const hideProfile = async (req, res) => {
 
 const unhideProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const user = await User.findById(userId);
 
     if (!user) {
@@ -323,7 +318,6 @@ const unhideProfile = async (req, res) => {
 
     user.isProfileHidden = false;
     user.profileHiddenUntil = null;
-
     await user.save();
 
     res.status(200).json({ message: "Profile unhidden successfully" });
@@ -334,7 +328,7 @@ const unhideProfile = async (req, res) => {
 
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const user = await User.findById(req.user.id || req.user._id).select("-password");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -344,29 +338,46 @@ const getMe = async (req, res) => {
   }
 };
 
+// Release Blocker Fix: Mass Assignment Guarded updateProfile
 const updateProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const updates = { ...req.body };
+    const userId = req.user.id || req.user._id;
 
-    delete updates.password;
-    delete updates.email;
+    // Strict Allowlist: Privileged fields like isVerifiedHost, hostStatus, walletBalance are NOT allowed
+    const ALLOWED_FIELDS = [
+      "name",
+      "gender",
+      "interestedIn",
+      "age",
+      "bio",
+      "jobTitle",
+      "company",
+      "school",
+      "livingIn",
+      "height",
+      "phone",
+    ];
 
-    if (updates.longitude !== undefined && updates.latitude !== undefined) {
+    const updates = {};
+    for (const field of ALLOWED_FIELDS) {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    }
+
+    if (req.body.longitude !== undefined && req.body.latitude !== undefined) {
       updates.location = {
         type: "Point",
-        coordinates: [Number(updates.longitude), Number(updates.latitude)],
+        coordinates: [Number(req.body.longitude), Number(req.body.latitude)],
       };
-      delete updates.longitude;
-      delete updates.latitude;
     }
 
-    if (updates.distancePreference) {
-      updates.distancePreference = Number(updates.distancePreference);
+    if (req.body.distancePreference) {
+      updates.distancePreference = Number(req.body.distancePreference);
     }
 
-    if (updates.agePreference) {
-      updates.agePreference = parseAgePreference(updates.agePreference);
+    if (req.body.agePreference) {
+      updates.agePreference = parseAgePreference(req.body.agePreference);
     }
 
     if (req.files) {
@@ -394,45 +405,45 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    if (updates.interests) {
+    if (req.body.interests) {
       try {
         updates.interests =
-          typeof updates.interests === "string"
-            ? JSON.parse(updates.interests)
-            : updates.interests;
+          typeof req.body.interests === "string"
+            ? JSON.parse(req.body.interests)
+            : req.body.interests;
       } catch (e) {
         updates.interests =
-          typeof updates.interests === "string"
-            ? updates.interests.split(",")
-            : updates.interests;
+          typeof req.body.interests === "string"
+            ? req.body.interests.split(",")
+            : req.body.interests;
       }
     }
 
-    if (updates.lifestyle) {
+    if (req.body.lifestyle) {
       try {
         updates.lifestyle =
-          typeof updates.lifestyle === "string"
-            ? JSON.parse(updates.lifestyle)
-            : updates.lifestyle;
+          typeof req.body.lifestyle === "string"
+            ? JSON.parse(req.body.lifestyle)
+            : req.body.lifestyle;
       } catch (e) {
         updates.lifestyle =
-          typeof updates.lifestyle === "string"
-            ? updates.lifestyle.split(",")
-            : updates.lifestyle;
+          typeof req.body.lifestyle === "string"
+            ? req.body.lifestyle.split(",")
+            : req.body.lifestyle;
       }
     }
 
-    if (updates.languages) {
+    if (req.body.languages) {
       try {
         updates.languages =
-          typeof updates.languages === "string"
-            ? JSON.parse(updates.languages)
-            : updates.languages;
+          typeof req.body.languages === "string"
+            ? JSON.parse(req.body.languages)
+            : req.body.languages;
       } catch (e) {
         updates.languages =
-          typeof updates.languages === "string"
-            ? updates.languages.split(",")
-            : updates.languages;
+          typeof req.body.languages === "string"
+            ? req.body.languages.split(",")
+            : req.body.languages;
       }
     }
 
@@ -452,7 +463,7 @@ const updateProfile = async (req, res) => {
 
 const submitHelpRequest = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const { subject, message, category } = req.body;
 
     if (!subject || !message) {
@@ -479,8 +490,10 @@ const submitHelpRequest = async (req, res) => {
 
 const getUserHelpRequests = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const helpRequests = await Support.find({ user: userId }).sort({ createdAt: -1 });
+    const userId = req.user.id || req.user._id;
+    const helpRequests = await Support.find({ user: userId }).sort({
+      createdAt: -1,
+    });
 
     res.status(200).json({
       message: "Help requests fetched successfully",
@@ -494,7 +507,7 @@ const getUserHelpRequests = async (req, res) => {
 
 const getHelpRequestById = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const { id } = req.params;
 
     const helpRequest = await Support.findOne({ _id: id, user: userId });
@@ -512,7 +525,6 @@ const getHelpRequestById = async (req, res) => {
   }
 };
 
-
 const getAllUsersCount = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
@@ -524,7 +536,6 @@ const getAllUsersCount = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 module.exports = {
   registerUser,
@@ -540,5 +551,5 @@ module.exports = {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
-  getAllUsersCount
+  getAllUsersCount,
 };

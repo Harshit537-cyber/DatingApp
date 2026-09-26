@@ -9,9 +9,9 @@ const hostApplicationSchema = new mongoose.Schema(
       unique: true,
     },
     eventConcept: { type: String, required: true, trim: true },
-  
-govIdImage: { type: String, default: '' },
     govIdNote: { type: String, default: '' },
+    govIdImage: { type: String, default: '' },
+    applicationFeePaymentIntentId: { type: String, default: null, unique: true, sparse: true },
     status: {
       type: String,
       enum: ['pending_review', 'approved', 'rejected', 're_verification_required'],
@@ -28,4 +28,4 @@ govIdImage: { type: String, default: '' },
   { timestamps: true }
 );
 
-module.exports = mongoose.model('HostApplication', hostApplicationSchema); 
+module.exports = mongoose.model('HostApplication', hostApplicationSchema);

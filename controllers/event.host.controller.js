@@ -65,9 +65,7 @@ const createHostEvent = async (req, res) => {
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
-};
-
-// GET /api/host/events
+};  
 const getHostEvents = async (req, res) => {
   try {
     const events = await Event.find({ hostedBy: req.user._id }).sort({ eventDate: 1 });
@@ -76,5 +74,4 @@ const getHostEvents = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 module.exports = { createHostEvent, getHostEvents };
