@@ -40,7 +40,7 @@ const photoUploads = upload.fields([
 // ==========================================
 router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
-router.post("/google-login", googleLogin); // Route registered
+router.post("/google", googleLogin); // Route registered
 
 
 // ==========================================
