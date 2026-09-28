@@ -1,10 +1,9 @@
-// DatingApp/controllers/auth.controller.js
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../config/cloudinary");
 const Support = require("../models/support.model");
-const { auth } = require("../config/firebase"); // Updated modern firebase import
+const { auth } = require("../config/firebase");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -68,11 +67,12 @@ const googleLogin = async (req, res) => {
       const hashedPassword = await bcrypt.hash(randomPassword, salt);
 
       user = await User.create({
-        name,
+        name: name || "User",
         email,
         password: hashedPassword,
         profilePic: picture || "",
         gender: null,
+        interestedIn: null,
         age: null,
         location: {
           type: "Point",
@@ -82,7 +82,7 @@ const googleLogin = async (req, res) => {
       console.log("🆕 New user registered in MongoDB with ID:", user._id);
     } else {
       console.log("🔄 Existing user found in MongoDB with ID:", user._id);
-      if (!user.gender || !user.age) {
+      if (!user.gender || !user.age || !user.interestedIn) {
         isNewUser = true;
         console.log("⚠️ Existing profile is incomplete (requires onboarding).");
       }
@@ -589,7 +589,6 @@ const getHelpRequestById = async (req, res) => {
   }
 };
 
-
 const getAllUsersCount = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
@@ -602,11 +601,10 @@ const getAllUsersCount = async (req, res) => {
   }
 };
 
-
 module.exports = {
   registerUser,
   loginUser,
-  googleLogin, // Exported correctly for routes
+  googleLogin,
   getMe,
   updateProfile,
   deleteAccount,
@@ -618,5 +616,5 @@ module.exports = {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
-  getAllUsersCount
+  getAllUsersCount,
 };

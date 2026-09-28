@@ -5,9 +5,26 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
-    gender: { type: String, enum: ['male', 'female', 'other'], required: true },
-    interestedIn: { type: String, enum: ['male', 'female', 'both'], required: true },
-    age: { type: Number, required: true, min: 18 },
+    gender: { 
+      type: String, 
+      enum: ['male', 'female', 'other', null], 
+      default: null 
+    },
+    interestedIn: { 
+      type: String, 
+      enum: ['male', 'female', 'both', null], 
+      default: null 
+    },
+    age: { 
+      type: Number, 
+      default: null,
+      validate: {
+        validator: function (v) {
+          return v === null || v === undefined || v >= 18;
+        },
+        message: 'Age must be at least 18',
+      },
+    },
     bio: { type: String, maxlength: 500, default: '' },
     jobTitle: { type: String, default: '' },
     company: { type: String, default: '' },
@@ -18,7 +35,7 @@ const userSchema = new mongoose.Schema(
     interests: [{ type: String }],
     lifestyle: [{ type: String }],
     languages: [{ type: String }],
-    profilePic: { type: String, required: true },
+    profilePic: { type: String, default: '' },
     additionalPhotos: [{ type: String }],
     blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     boostsAvailable: { type: Number, default: 1 },
@@ -76,7 +93,6 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-  
+
 userSchema.index({ location: '2dsphere' });
-module.exports = mongoose.model('User', userSchema);  
- 
+module.exports = mongoose.model('User', userSchema);
