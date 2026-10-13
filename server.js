@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const http = require("http");
 const { Server } = require("socket.io");
+const mongoose = require("mongoose"); // <-- Index drop karne ke liye add kiya
 
 const connectDB = require("./config/database");
 const app = require("./app");
@@ -11,6 +12,17 @@ const Message = require("./models/message.model");
 const socketAuth = require("./middleware/socketAuth");
 
 connectDB();
+
+// Auto-drop orphan 'user_1' index from hostapplications (Fixes E11000 Duplicate Key Error)
+mongoose.connection.once("open", async () => {
+  try {
+    await mongoose.connection.collection("hostapplications").dropIndex("user_1");
+    console.log('[MongoDB] Orphan index "user_1" dropped successfully from hostapplications.');
+  } catch (err) {
+    // Agar index pehle hi delete ho chuka ho ya na mile toh ignore karega
+    console.log('[MongoDB] Index check status:', err.message);
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
