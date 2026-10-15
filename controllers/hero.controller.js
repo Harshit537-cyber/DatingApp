@@ -1,20 +1,17 @@
 const Hero = require("../models/hero.model");
 const cloudinary = require("../config/cloudinary");
 
-const uploadToCloudinary = (file, folder) => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "auto", // 👈 auto रखने से Cloudinary MP4 को सही से प्रोसेस कर लेता है
-        folder: folder,
-      },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result);
-      }
-    );
-    uploadStream.end(file.buffer);
+// 👈 बिल्कुल आपके Carousel कंट्रोलर जैसा Base64 Upload फंक्शन
+const uploadToCloudinary = async (file, folder) => {
+  const b64 = Buffer.from(file.buffer).toString("base64");
+  const dataURI = "data:" + file.mimetype + ";base64," + b64;
+
+  const result = await cloudinary.uploader.upload(dataURI, {
+    resource_type: "video",
+    folder: folder,
   });
+
+  return result;
 };
 
 const createOrUpdateHeroSection = async (req, res) => {
@@ -51,7 +48,7 @@ const createOrUpdateHeroSection = async (req, res) => {
       heroData = new Hero({ backgroundVideo: {}, cardVideos: [] });
     }
 
-    // 1. Background Video Upload
+    // 1. Background Video Upload (Base64 DataURI)
     if (validBackgroundVideo) {
       const result = await uploadToCloudinary(
         validBackgroundVideo,
@@ -63,7 +60,7 @@ const createOrUpdateHeroSection = async (req, res) => {
       };
     }
 
-    // 2. Card Videos Upload
+    // 2. Card Videos Upload (Base64 DataURI)
     if (validCardVideos.length > 0) {
       const uploadedCardVideos = [];
       for (const file of validCardVideos) {
