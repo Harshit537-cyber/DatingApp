@@ -231,6 +231,115 @@ const adminRemoveUserMatch = async (req, res) => {
   }
 };
 
+const adminGetAllUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = "", status } = req.query;
+    const query = {};
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (status === "banned") query.isBanned = true;
+    if (status === "active") query.isBanned = false;
+    if (status === "verified") query.isVerified = true;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const totalUsers = await User.countDocuments(query);
+    const users = await User.find(query)
+      .select("name email profilePic age gender isVerified isBanned subscription walletBalance createdAt")
+      .skip(skip)
+      .limit(Number(limit))
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      totalUsers,
+      totalPages: Math.ceil(totalUsers / Number(limit)),
+      currentPage: Number(page),
+      users,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminToggleUserBan = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    user.isBanned = !user.isBanned;
+    user.banReason = user.isBanned ? (reason || "Violation of platform policies") : null;
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `User ${user.isBanned ? "banned" : "unbanned"} successfully`,
+      isBanned: user.isBanned,
+      banReason: user.banReason,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminVerifyUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { isVerified } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    user.isVerified = isVerified !== undefined ? isVerified : true;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `User verification ${user.isVerified ? "approved" : "revoked"} successfully`,
+      isVerified: user.isVerified,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminBoostUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { durationMinutes = 30 } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const boostUntil = new Date(Date.now() + Number(durationMinutes) * 60 * 1000);
+    user.boostUntil = boostUntil;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `User profile boosted for ${durationMinutes} minutes`,
+      boostUntil: user.boostUntil,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   adminGetPlans,
   adminSavePlan,
@@ -242,4 +351,8 @@ module.exports = {
   adminGetAllSubscriptions,
   adminGetPlatformStats,
   adminRemoveUserMatch,
+  adminGetAllUsers,
+  adminToggleUserBan,
+  adminVerifyUser,
+  adminBoostUser,
 };

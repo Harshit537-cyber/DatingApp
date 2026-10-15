@@ -1,4 +1,5 @@
 const User = require("../models/user.model");
+const Carousel = require("../models/carousel.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../config/cloudinary");
@@ -32,36 +33,72 @@ const parseAgePreference = (input) => {
   return { min: 18, max: 80 };
 };
 
-// ==========================================
-// GOOGLE AUTH CONTROLLER (FIREBASE VERIFICATION)
-// ==========================================
+const uploadCarouselVideos = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "Please select at least one video to upload" });
+    }
+
+    if (req.files.length > 5) {
+      return res.status(400).json({ message: "You can upload a maximum of 5 videos only" });
+    }
+
+    const uploadedVideos = [];
+
+    for (const file of req.files) {
+      const b64 = Buffer.from(file.buffer).toString("base64");
+      const dataURI = "data:" + file.mimetype + ";base64," + b64;
+
+      const result = await cloudinary.uploader.upload(dataURI, {
+        resource_type: "video",
+        folder: "landing_carousel_videos",
+      });
+
+      const video = await Carousel.create({
+        videoUrl: result.secure_url,
+        publicId: result.public_id,
+      });
+
+      uploadedVideos.push(video);
+    }
+
+    res.status(201).json({
+      message: "Videos uploaded successfully",
+      videos: uploadedVideos,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getCarouselVideos = async (req, res) => {
+  try {
+    const videos = await Carousel.find().sort({ createdAt: -1 }).limit(5);
+    res.status(200).json({
+      success: true,
+      videos,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const googleLogin = async (req, res) => {
   try {
     const { idToken } = req.body;
-    
-    console.log("\n=================== GOOGLE AUTH START ===================");
-    console.log("👉 Google Auth API call received!");
-    console.log("👉 Received Token:", idToken ? "Exists (Token passed)" : "Empty");
 
     if (!idToken) {
-      console.log("❌ Error: No ID Token found in request body");
       return res.status(400).json({ message: "Firebase ID token is required" });
     }
 
-    // 1. Verify token with Firebase Admin SDK
-    console.log("🔄 Verifying token with Firebase Admin SDK...");
     const decodedToken = await auth.verifyIdToken(idToken);
     const { email, name, picture } = decodedToken;
-    console.log("✅ Token verified successfully! User Info:", { Name: name, Email: email });
 
-    // 2. Check Database for user
     let user = await User.findOne({ email });
     let isNewUser = false;
 
     if (!user) {
       isNewUser = true;
-      console.log("👤 New user detected! Creating a new database record...");
-      
       const randomPassword = Math.random().toString(36).slice(-10);
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(randomPassword, salt);
@@ -79,17 +116,11 @@ const googleLogin = async (req, res) => {
           coordinates: [0, 0],
         },
       });
-      console.log("🆕 New user registered in MongoDB with ID:", user._id);
     } else {
-      console.log("🔄 Existing user found in MongoDB with ID:", user._id);
       if (!user.gender || !user.age || !user.interestedIn) {
         isNewUser = true;
-        console.log("⚠️ Existing profile is incomplete (requires onboarding).");
       }
     }
-
-    console.log("🚀 Response sent to Frontend successfully!");
-    console.log("==================== GOOGLE AUTH END ====================\n");
 
     res.status(200).json({
       _id: user._id,
@@ -100,10 +131,7 @@ const googleLogin = async (req, res) => {
       token: generateToken(user._id),
       isNewUser,
     });
-
   } catch (error) {
-    console.error("❌ Google Auth Verification Failed:", error.message);
-    console.log("=========================================================\n");
     res.status(500).json({ message: "Google authentication failed: " + error.message });
   }
 };
@@ -617,4 +645,6 @@ module.exports = {
   getUserHelpRequests,
   getHelpRequestById,
   getAllUsersCount,
+  uploadCarouselVideos,
+  getCarouselVideos,
 };
