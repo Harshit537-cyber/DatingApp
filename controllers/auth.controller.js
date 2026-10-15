@@ -33,6 +33,69 @@ const parseAgePreference = (input) => {
   return { min: 18, max: 80 };
 };
 
+
+const uploadLandingMedia = async (req, res) => {
+  try {
+    const hasBg = req.files?.backgroundVideo && req.files.backgroundVideo.length > 0;
+    const hasCards = req.files?.cardVideos && req.files.cardVideos.length > 0;
+
+    if (!hasBg && !hasCards) {
+      return res.status(400).json({
+        message: "Please select a background video or card videos to upload",
+      });
+    }
+
+    let uploadedBackgroundVideo = null;
+    const uploadedCardVideos = [];
+
+    // 1. Single Background Video Upload
+    if (hasBg) {
+      const file = req.files.backgroundVideo[0];
+      const b64 = Buffer.from(file.buffer).toString("base64");
+      const dataURI = "data:" + file.mimetype + ";base64," + b64;
+
+      const result = await cloudinary.uploader.upload(dataURI, {
+        resource_type: "video",
+        folder: "landing_videos/background",
+      });
+
+      uploadedBackgroundVideo = await Carousel.create({
+        videoUrl: result.secure_url,
+        publicId: result.public_id,
+        // agar schema mein type field hai toh 'background' add kar sakte hain
+      });
+    }
+
+    // 2. Multiple Card Videos Upload
+    if (hasCards) {
+      for (const file of req.files.cardVideos) {
+        const b64 = Buffer.from(file.buffer).toString("base64");
+        const dataURI = "data:" + file.mimetype + ";base64," + b64;
+
+        const result = await cloudinary.uploader.upload(dataURI, {
+          resource_type: "video",
+          folder: "landing_videos/cards",
+        });
+
+        const video = await Carousel.create({
+          videoUrl: result.secure_url,
+          publicId: result.public_id,
+        });
+
+        uploadedCardVideos.push(video);
+      }
+    }
+
+    res.status(201).json({
+      message: "Videos uploaded successfully",
+      backgroundVideo: uploadedBackgroundVideo,
+      cardVideos: uploadedCardVideos,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const uploadCarouselVideos = async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
@@ -647,4 +710,5 @@ module.exports = {
   getAllUsersCount,
   uploadCarouselVideos,
   getCarouselVideos,
+  uploadLandingMedia
 };

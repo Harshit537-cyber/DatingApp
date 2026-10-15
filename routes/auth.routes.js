@@ -22,6 +22,7 @@ const {
   getAllUsersCount,
   uploadCarouselVideos,
   getCarouselVideos,
+  uploadLandingMedia, // <-- Naya controller function import kiya
 } = require("../controllers/auth.controller");
 
 const storage = multer.memoryStorage();
@@ -37,12 +38,21 @@ const photoUploads = upload.fields([
 
 const videoUploads = upload.array("videos", 5);
 
+// 1 background video aur multiple (up to 10) card videos ke liye multer setup
+const landingMediaUploads = upload.fields([
+  { name: "backgroundVideo", maxCount: 1 },
+  { name: "cardVideos", maxCount: 10 },
+]);
+
 router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
 router.post("/google", googleLogin);
 
 router.post("/carousel-videos", videoUploads, uploadCarouselVideos);
 router.get("/carousel-videos", getCarouselVideos);
+
+// Nayi API endpoint background aur card videos upload karne ke liye
+router.post("/landing-media", landingMediaUploads, uploadLandingMedia);
 
 router.use(protect);
 
