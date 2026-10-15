@@ -13,37 +13,31 @@ const circleRoutes = require("./routes/circle.routes");
 const adminNotificationRoutes = require("./routes/admin.notification.routes");
 const userNotificationRoutes = require("./routes/user.notification.routes");
 const chatRoutes = require("./routes/chat.routes");
-
-// --- New Routes Added ---
 const hostRoutes = require("./routes/host.routes");
 const ticketRoutes = require("./routes/ticket.routes");
+const heroRoutes = require("./routes/hero.routes");
 
-// Webhook Handlers
 const { handleStripeWebhook } = require("./controllers/plan.controller");
-const { handleConnectWebhook } = require("./controllers/webhook.controller"); // <-- Added
+const { handleConnectWebhook } = require("./controllers/webhook.controller");
 
 const app = express();
 
 app.use(cors());
 
-// 1. Plan Stripe Webhook (Raw body)
 app.post(
   "/api/plans/stripe-webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-// 2. Stripe Connect Webhook (Raw body) <-- Added (Brief v3)
 app.post(
   "/api/webhooks/stripe/connect",
   express.raw({ type: "application/json" }),
   handleConnectWebhook
 );
 
-// Global express.json() parser (Webhooks ke baad hona chahiye)
 app.use(express.json());
 
-// Routes Mounting
 app.use("/api/auth", authRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/swipes", swipeRoutes);
@@ -51,22 +45,18 @@ app.use("/api/plans", planRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/circle", circleRoutes);
 app.use("/api/notifications", userNotificationRoutes);
-
-// --- Mount Host and Ticket Routes ---
 app.use("/api/host", hostRoutes);
 app.use("/api/tickets", ticketRoutes);
+app.use("/api/hero", heroRoutes);
 
-// Admin Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/users-manage", adminRoutes);
 app.use("/api/admin/plans-manage", adminPlanRoutes);
 app.use("/api/admin/match-manage", adminMatchRoutes);
 app.use("/api/admin/notifications", adminNotificationRoutes);
 
-// Chat Routes
 app.use("/api/chats", chatRoutes);
 
-// --- Background Cron Jobs (v2/v3 Cleanup & Re-verification) ---
 require("./jobs/expirePendingTickets.job");
 require("./jobs/flagReVerification.job");
 
