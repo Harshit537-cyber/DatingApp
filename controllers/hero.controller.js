@@ -5,7 +5,7 @@ const uploadToCloudinary = (file, folder) => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        resource_type: "video",
+        resource_type: "auto", // 👈 auto रखने से Cloudinary MP4 को सही से प्रोसेस कर लेता है
         folder: folder,
       },
       (error, result) => {
@@ -51,6 +51,7 @@ const createOrUpdateHeroSection = async (req, res) => {
       heroData = new Hero({ backgroundVideo: {}, cardVideos: [] });
     }
 
+    // 1. Background Video Upload
     if (validBackgroundVideo) {
       const result = await uploadToCloudinary(
         validBackgroundVideo,
@@ -62,6 +63,7 @@ const createOrUpdateHeroSection = async (req, res) => {
       };
     }
 
+    // 2. Card Videos Upload
     if (validCardVideos.length > 0) {
       const uploadedCardVideos = [];
       for (const file of validCardVideos) {
