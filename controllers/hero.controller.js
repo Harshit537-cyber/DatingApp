@@ -1,20 +1,49 @@
 const Hero = require("../models/hero.model");
 const cloudinary = require("../config/cloudinary");
+const { Readable } = require("stream");
 
-const uploadToCloudinary = async (file, folder) => {
-  const b64 = Buffer.from(file.buffer).toString("base64");
-  const dataURI = "data:" + file.mimetype + ";base64," + b64;
-  return await cloudinary.uploader.upload(dataURI, {
-    resource_type: "video",
-    folder: folder,
+const uploadToCloudinary = (file, folder) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "video",
+        folder: folder,
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    Readable.from(file.buffer).pipe(uploadStream);
   });
 };
 
 const createOrUpdateHeroSection = async (req, res) => {
   try {
-    if (!req.files || (!req.files.backgroundVideo && !req.files.cardVideos)) {
+    const validBackgroundVideo =
+      req.files &&
+      req.files.backgroundVideo &&
+      req.files.backgroundVideo[0] &&
+      req.files.backgroundVideo[0].size > 0
+        ? req.files.backgroundVideo[0]
+        : null;
+
+    const validCardVideos =
+      req.files && req.files.cardVideos
+        ? req.files.cardVideos.filter((f) => f.size > 0)
+        : [];
+
+    if (!validBackgroundVideo && validCardVideos.length === 0) {
       return res.status(400).json({
-        message: "Please upload at least backgroundVideo or cardVideos",
+        success: false,
+        message: "Please select at least one valid video file to upload",
+      });
+    }
+
+    if (validCardVideos.length > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "You can upload a maximum of 5 card videos",
       });
     }
 
@@ -23,24 +52,20 @@ const createOrUpdateHeroSection = async (req, res) => {
       heroData = new Hero({ backgroundVideo: {}, cardVideos: [] });
     }
 
-    if (req.files.backgroundVideo && req.files.backgroundVideo.length > 0) {
-      const file = req.files.backgroundVideo[0];
-      const result = await uploadToCloudinary(file, "hero_section/background");
+    if (validBackgroundVideo) {
+      const result = await uploadToCloudinary(
+        validBackgroundVideo,
+        "hero_section/background"
+      );
       heroData.backgroundVideo = {
         videoUrl: result.secure_url,
         publicId: result.public_id,
       };
     }
 
-    if (req.files.cardVideos && req.files.cardVideos.length > 0) {
-      if (req.files.cardVideos.length > 5) {
-        return res.status(400).json({
-          message: "You can upload a maximum of 5 card videos",
-        });
-      }
-
+    if (validCardVideos.length > 0) {
       const uploadedCardVideos = [];
-      for (const file of req.files.cardVideos) {
+      for (const file of validCardVideos) {
         const result = await uploadToCloudinary(file, "hero_section/cards");
         uploadedCardVideos.push({
           videoUrl: result.secure_url,
