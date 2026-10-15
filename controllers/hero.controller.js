@@ -1,6 +1,5 @@
 const Hero = require("../models/hero.model");
 const cloudinary = require("../config/cloudinary");
-const { Readable } = require("stream");
 
 const uploadToCloudinary = (file, folder) => {
   return new Promise((resolve, reject) => {
@@ -14,7 +13,7 @@ const uploadToCloudinary = (file, folder) => {
         resolve(result);
       }
     );
-    Readable.from(file.buffer).pipe(uploadStream);
+    uploadStream.end(file.buffer);
   });
 };
 
