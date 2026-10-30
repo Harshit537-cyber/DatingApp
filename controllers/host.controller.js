@@ -158,7 +158,7 @@ const createPayoutAccount = async (req, res) => {
         { _id: user._id, stripeConnectAccountId: null },
         { stripeAccountStatus: 'onboarding_pending' },
         { new: true }
-      );
+      );                                                                                  
 
       if (!locked) {
         return res.status(409).json({ success: false, message: 'Onboarding already in progress.' });

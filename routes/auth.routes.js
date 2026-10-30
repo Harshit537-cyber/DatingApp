@@ -1,13 +1,16 @@
+// DatingApp/routes/auth.routes.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 
+// Middleware Imports
 const { protect } = require("../middleware/authMiddleware");
 
 const {
   registerUser,
   loginUser,
-  googleLogin,
+  googleLogin, // Imported Google Auth logic
+  appleLogin, // Imported Apple Auth logic
   getMe,
   updateProfile,
   deleteAccount,
@@ -19,12 +22,10 @@ const {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
-  getAllUsersCount,
-  uploadCarouselVideos,
-  getCarouselVideos,
-  uploadLandingMedia, // <-- Naya controller function import kiya
+  getAllUsersCount
 } = require("../controllers/auth.controller");
 
+// Multer Config (Memory Storage for Cloudinary Uploads)
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
@@ -46,15 +47,16 @@ const landingMediaUploads = upload.fields([
 
 router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
-router.post("/google", googleLogin);
-
-router.post("/carousel-videos", videoUploads, uploadCarouselVideos);
-router.get("/carousel-videos", getCarouselVideos);
+router.post("/google", googleLogin); // Route registered
+router.post("/apple", appleLogin);
 
 // Nayi API endpoint background aur card videos upload karne ke liye
 router.post("/landing-media", landingMediaUploads, uploadLandingMedia);
 
-router.use(protect);
+// ==========================================
+// PROTECTED ROUTES (Requires JWT Auth Token)
+// ==========================================
+router.use(protect); // Middleware runs for all routes below
 
 router.get("/me", getMe);
 router.get("/profile/:id", getProfileById);

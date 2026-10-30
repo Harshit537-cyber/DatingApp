@@ -2,8 +2,10 @@ const User = require("../models/user.model");
 const Carousel = require("../models/carousel.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const cloudinary = require("../config/cloudinary");
 const Support = require("../models/support.model");
+const { auth } = require("../config/firebase");
 const { auth } = require("../config/firebase");
 
 const generateToken = (id) => {
@@ -33,135 +35,36 @@ const parseAgePreference = (input) => {
   return { min: 18, max: 80 };
 };
 
-
-const uploadLandingMedia = async (req, res) => {
-  try {
-    const hasBg = req.files?.backgroundVideo && req.files.backgroundVideo.length > 0;
-    const hasCards = req.files?.cardVideos && req.files.cardVideos.length > 0;
-
-    if (!hasBg && !hasCards) {
-      return res.status(400).json({
-        message: "Please select a background video or card videos to upload",
-      });
-    }
-
-    let uploadedBackgroundVideo = null;
-    const uploadedCardVideos = [];
-
-    // 1. Single Background Video Upload
-    if (hasBg) {
-      const file = req.files.backgroundVideo[0];
-      const b64 = Buffer.from(file.buffer).toString("base64");
-      const dataURI = "data:" + file.mimetype + ";base64," + b64;
-
-      const result = await cloudinary.uploader.upload(dataURI, {
-        resource_type: "video",
-        folder: "landing_videos/background",
-      });
-
-      uploadedBackgroundVideo = await Carousel.create({
-        videoUrl: result.secure_url,
-        publicId: result.public_id,
-        // agar schema mein type field hai toh 'background' add kar sakte hain
-      });
-    }
-
-    // 2. Multiple Card Videos Upload
-    if (hasCards) {
-      for (const file of req.files.cardVideos) {
-        const b64 = Buffer.from(file.buffer).toString("base64");
-        const dataURI = "data:" + file.mimetype + ";base64," + b64;
-
-        const result = await cloudinary.uploader.upload(dataURI, {
-          resource_type: "video",
-          folder: "landing_videos/cards",
-        });
-
-        const video = await Carousel.create({
-          videoUrl: result.secure_url,
-          publicId: result.public_id,
-        });
-
-        uploadedCardVideos.push(video);
-      }
-    }
-
-    res.status(201).json({
-      message: "Videos uploaded successfully",
-      backgroundVideo: uploadedBackgroundVideo,
-      cardVideos: uploadedCardVideos,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const uploadCarouselVideos = async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: "Please select at least one video to upload" });
-    }
-
-    if (req.files.length > 5) {
-      return res.status(400).json({ message: "You can upload a maximum of 5 videos only" });
-    }
-
-    const uploadedVideos = [];
-
-    for (const file of req.files) {
-      const b64 = Buffer.from(file.buffer).toString("base64");
-      const dataURI = "data:" + file.mimetype + ";base64," + b64;
-
-      const result = await cloudinary.uploader.upload(dataURI, {
-        resource_type: "video",
-        folder: "landing_carousel_videos",
-      });
-
-      const video = await Carousel.create({
-        videoUrl: result.secure_url,
-        publicId: result.public_id,
-      });
-
-      uploadedVideos.push(video);
-    }
-
-    res.status(201).json({
-      message: "Videos uploaded successfully",
-      videos: uploadedVideos,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const getCarouselVideos = async (req, res) => {
-  try {
-    const videos = await Carousel.find().sort({ createdAt: -1 }).limit(5);
-    res.status(200).json({
-      success: true,
-      videos,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
+// ==========================================
+// GOOGLE AUTH CONTROLLER (FIREBASE VERIFICATION)
+// ==========================================
 const googleLogin = async (req, res) => {
   try {
     const { idToken } = req.body;
 
+    console.log("\n=================== GOOGLE AUTH START ===================");
+    console.log("👉 Google Auth API call received!");
+    console.log("👉 Received Token:", idToken ? "Exists (Token passed)" : "Empty");
+
     if (!idToken) {
+      console.log("❌ Error: No ID Token found in request body");
       return res.status(400).json({ message: "Firebase ID token is required" });
     }
 
+    // 1. Verify token with Firebase Admin SDK
+    console.log("🔄 Verifying token with Firebase Admin SDK...");
     const decodedToken = await auth.verifyIdToken(idToken);
     const { email, name, picture } = decodedToken;
+    console.log("✅ Token verified successfully! User Info:", { Name: name, Email: email });
 
+    // 2. Check Database for user
     let user = await User.findOne({ email });
     let isNewUser = false;
 
     if (!user) {
       isNewUser = true;
+      console.log("👤 New user detected! Creating a new database record...");
+
       const randomPassword = Math.random().toString(36).slice(-10);
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(randomPassword, salt);
@@ -179,10 +82,124 @@ const googleLogin = async (req, res) => {
           coordinates: [0, 0],
         },
       });
+      console.log("🆕 New user registered in MongoDB with ID:", user._id);
     } else {
+      console.log("🔄 Existing user found in MongoDB with ID:", user._id);
       if (!user.gender || !user.age || !user.interestedIn) {
         isNewUser = true;
+        console.log("⚠️ Existing profile is incomplete (requires onboarding).");
       }
+    }
+
+    console.log("🚀 Response sent to Frontend successfully!");
+    console.log("==================== GOOGLE AUTH END ====================\n");
+
+    res.status(200).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      gender: user.gender,
+      profilePic: user.profilePic,
+      token: generateToken(user._id),
+      isNewUser,
+    });
+
+  } catch (error) {
+    console.error("❌ Google Auth Verification Failed:", error.message);
+    console.log("=========================================================\n");
+    res.status(500).json({ message: "Google authentication failed: " + error.message });
+  }
+};
+
+// ==========================================
+// APPLE AUTH CONTROLLER (FIREBASE VERIFICATION)
+// ==========================================
+// Flow: iOS app -> Apple -> Firebase Auth SDK -> Firebase ID token -> this endpoint.
+// We never talk to Apple directly; we only verify the Firebase ID token.
+const appleLogin = async (req, res) => {
+  try {
+    const { idToken, fullName } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ message: "Firebase ID token is required" });
+    }
+
+    // 1. Verify token with Firebase Admin SDK (second arg also checks the token was not revoked)
+    let decodedToken;
+    try {
+      decodedToken = await auth.verifyIdToken(idToken, true);
+    } catch (err) {
+      console.error("❌ Apple Auth: token verification failed:", err.code || err.message);
+      return res.status(401).json({ message: "Invalid or expired Firebase token" });
+    }
+
+    // 2. Make sure this token really came from Sign in with Apple
+    if (decodedToken.firebase?.sign_in_provider !== "apple.com") {
+      return res.status(401).json({ message: "Token was not issued via Apple sign-in" });
+    }
+
+    const appleId = decodedToken.uid; // stable Firebase UID for this Apple user
+    const tokenEmail = decodedToken.email ? decodedToken.email.toLowerCase() : null;
+    const emailVerified = decodedToken.email_verified === true;
+
+    // Apple only gives the name on the FIRST sign-in, and only to the app (not in the token).
+    // The client should pass it as `fullName`.
+    const displayName =
+      (typeof fullName === "string" && fullName.trim()) ||
+      decodedToken.name ||
+      "User";
+
+    // 3. Find the user: by appleId first, then link to an existing account by verified email
+    let user = await User.findOne({ appleId });
+    let isNewUser = false;
+
+    if (!user && tokenEmail && emailVerified) {
+      user = await User.findOne({ email: tokenEmail });
+      if (user) {
+        user.appleId = appleId;
+        await user.save();
+      }
+    }
+
+    if (!user) {
+      isNewUser = true;
+
+      // Apple may hide the email (private relay) or omit it; the schema requires a unique email.
+      const email = tokenEmail || `${appleId}@apple.noemail.invalid`;
+
+      const randomPassword = crypto.randomBytes(24).toString("hex");
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      try {
+        user = await User.create({
+          name: displayName,
+          email,
+          password: hashedPassword,
+          appleId,
+          authProvider: "apple",
+          profilePic: "",
+          gender: null,
+          interestedIn: null,
+          age: null,
+          location: { type: "Point", coordinates: [0, 0] },
+        });
+      } catch (err) {
+        // Two simultaneous first-logins: the other request already created the user
+        if (err.code === 11000) {
+          user = await User.findOne({ appleId });
+          isNewUser = false;
+          if (!user) throw err;
+        } else {
+          throw err;
+        }
+      }
+    } else if (!user.gender || !user.age || !user.interestedIn) {
+      isNewUser = true; // existing but profile incomplete -> needs onboarding
+    }
+
+    if (user.isBanned) {
+      return res.status(403).json({ message: "This account has been banned" });
     }
 
     res.status(200).json({
@@ -195,7 +212,8 @@ const googleLogin = async (req, res) => {
       isNewUser,
     });
   } catch (error) {
-    res.status(500).json({ message: "Google authentication failed: " + error.message });
+    console.error("❌ Apple Auth Failed:", error.message);
+    res.status(500).json({ message: "Apple authentication failed: " + error.message });
   }
 };
 
@@ -696,6 +714,7 @@ module.exports = {
   registerUser,
   loginUser,
   googleLogin,
+  appleLogin,
   getMe,
   updateProfile,
   deleteAccount,

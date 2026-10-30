@@ -5,18 +5,18 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
-    gender: { 
-      type: String, 
-      enum: ['male', 'female', 'other', null], 
-      default: null 
+    gender: {
+      type: String,
+      enum: ['male', 'female', 'other', null],
+      default: null
     },
-    interestedIn: { 
-      type: String, 
-      enum: ['male', 'female', 'both', null], 
-      default: null 
+    interestedIn: {
+      type: String,
+      enum: ['male', 'female', 'both', null],
+      default: null
     },
-    age: { 
-      type: Number, 
+    age: {
+      type: Number,
       default: null,
       validate: {
         validator: function (v) {
@@ -30,6 +30,9 @@ const userSchema = new mongoose.Schema(
     company: { type: String, default: '' },
     school: { type: String, default: '' },
     phone: { type: String, unique: true, sparse: true },
+    // Sign in with Apple (Firebase UID of the apple.com provider user)
+    appleId: { type: String, unique: true, sparse: true, default: undefined },
+    authProvider: { type: String, enum: ['local', 'google', 'apple'], default: 'local' },
     livingIn: { type: String, default: '' },
     height: { type: Number, default: null },
     interests: [{ type: String }],
