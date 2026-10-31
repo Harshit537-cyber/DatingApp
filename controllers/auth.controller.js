@@ -122,12 +122,12 @@ const appleLogin = async (req, res) => {
       return res.status(400).json({ message: "Firebase ID token is required" });
     }
 
-    // 1. Verify token with Firebase Admin SDK (second arg also checks the token was not revoked)
+    // Verify the Firebase ID token, matching the Google sign-in flow.
     let decodedToken;
     try {
-      decodedToken = await auth.verifyIdToken(idToken, true);
+      decodedToken = await auth.verifyIdToken(idToken);
     } catch (err) {
-      console.error("❌ Apple Auth: token verification failed:", err.code || err.message);
+      console.error("Apple verifyIdToken failed:", err.code, err.message);
       return res.status(401).json({ message: "Invalid or expired Firebase token" });
     }
 
@@ -136,18 +136,17 @@ const appleLogin = async (req, res) => {
       return res.status(401).json({ message: "Token was not issued via Apple sign-in" });
     }
 
-    const appleId = decodedToken.uid; // stable Firebase UID for this Apple user
+    const appleId = decodedToken.uid;
     const tokenEmail = decodedToken.email ? decodedToken.email.toLowerCase() : null;
     const emailVerified = decodedToken.email_verified === true;
+    const email = tokenEmail || `${appleId}@apple.noemail.invalid`;
 
-    // Apple only gives the name on the FIRST sign-in, and only to the app (not in the token).
-    // The client should pass it as `fullName`.
     const displayName =
       (typeof fullName === "string" && fullName.trim()) ||
       decodedToken.name ||
+      email.split("@")[0] ||
       "User";
 
-    // 3. Find the user: by appleId first, then link to an existing account by verified email
     let user = await User.findOne({ appleId });
     let isNewUser = false;
 
@@ -161,9 +160,6 @@ const appleLogin = async (req, res) => {
 
     if (!user) {
       isNewUser = true;
-
-      // Apple may hide the email (private relay) or omit it; the schema requires a unique email.
-      const email = tokenEmail || `${appleId}@apple.noemail.invalid`;
 
       const randomPassword = crypto.randomBytes(24).toString("hex");
       const salt = await bcrypt.genSalt(10);
