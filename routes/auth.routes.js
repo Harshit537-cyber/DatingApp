@@ -37,21 +37,10 @@ const photoUploads = upload.fields([
   { name: "additionalPhotos", maxCount: 10 },
 ]);
 
-const videoUploads = upload.array("videos", 5);
-
-// 1 background video aur multiple (up to 10) card videos ke liye multer setup
-const landingMediaUploads = upload.fields([
-  { name: "backgroundVideo", maxCount: 1 },
-  { name: "cardVideos", maxCount: 10 },
-]);
-
 router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
 router.post("/google", googleLogin); // Route registered
 router.post("/apple", appleLogin);
-
-// Nayi API endpoint background aur card videos upload karne ke liye
-router.post("/landing-media", landingMediaUploads, uploadLandingMedia);
 
 // ==========================================
 // PROTECTED ROUTES (Requires JWT Auth Token)

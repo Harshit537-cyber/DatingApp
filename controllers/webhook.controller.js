@@ -14,7 +14,6 @@ const handleConnectWebhook = async (req, res) => {
     return res.status(400).send(`Webhook signature verification failed: ${err.message}`);
   }
 
-  // Idempotency check
   const alreadyProcessed = await ProcessedEvent.findOne({ stripeEventId: event.id });
   if (alreadyProcessed) {
     return res.status(200).json({ received: true });
@@ -42,4 +41,79 @@ const handleConnectWebhook = async (req, res) => {
   return res.status(200).json({ received: true });
 };
 
-module.exports = { handleConnectWebhook };
+const createConnectAccount = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.stripeConnectAccountId) {
+      return res.status(400).json({ error: 'Stripe account already exists for this user' });
+    }
+
+    const account = await stripe.accounts.create({
+      type: 'express',
+      email: user.email,
+    });
+
+    user.stripeConnectAccountId = account.id;
+    user.stripeAccountStatus = 'onboarding_pending';
+    await user.save();
+
+    return res.status(201).json({ accountId: account.id });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const generateAccountLink = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findById(userId);
+
+    if (!user || !user.stripeConnectAccountId) {
+      return res.status(400).json({ error: 'Invalid user or missing Stripe Connect account' });
+    }
+
+    const accountLink = await stripe.accountLinks.create({
+      account: user.stripeConnectAccountId,
+      refresh_url: `${process.env.CLIENT_URL}/onboarding/refresh`,
+      return_url: `${process.env.CLIENT_URL}/onboarding/success`,
+      type: 'account_onboarding',
+    });
+
+    return res.status(200).json({ url: accountLink.url });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+
+const createDashboardLoginLink = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findById(userId);
+
+    if (!user || !user.stripeConnectAccountId) {
+      return res.status(400).json({ error: 'User does not have a connected Stripe account' });
+    }
+
+    const loginLink = await stripe.accounts.createLoginLink(
+      user.stripeConnectAccountId
+    );
+
+    return res.status(200).json({ url: loginLink.url });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports = { 
+  handleConnectWebhook,
+  createConnectAccount,
+  generateAccountLink,
+  createDashboardLoginLink
+};

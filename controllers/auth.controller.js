@@ -1,11 +1,9 @@
 const User = require("../models/user.model");
-const Carousel = require("../models/carousel.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const cloudinary = require("../config/cloudinary");
 const Support = require("../models/support.model");
-const { auth } = require("../config/firebase");
 const { auth } = require("../config/firebase");
 
 const generateToken = (id) => {
@@ -726,8 +724,5 @@ module.exports = {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
-  getAllUsersCount,
-  uploadCarouselVideos,
-  getCarouselVideos,
-  uploadLandingMedia
+  getAllUsersCount
 };

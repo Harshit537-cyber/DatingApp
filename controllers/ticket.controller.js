@@ -5,7 +5,7 @@ const Ticket = require('../models/ticket.model');
 const Transaction = require('../models/transaction.model');
 const User = require('../models/user.model');
 
-// POST /api/tickets/purchase (Reservation-backed, atomic inventory reservation)
+
 const purchaseTicket = async (req, res) => {
   try {
     const { eventId, ticketTier, wristbandType } = req.body;
