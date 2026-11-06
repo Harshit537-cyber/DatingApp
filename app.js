@@ -13,6 +13,7 @@ const circleRoutes = require("./routes/circle.routes");
 const adminNotificationRoutes = require("./routes/admin.notification.routes");
 const userNotificationRoutes = require("./routes/user.notification.routes");
 const chatRoutes = require("./routes/chat.routes");
+const spotifyRoutes = require("./routes/spotify.routes");
 
 // --- Host and Ticket Routes ---
 const hostRoutes = require("./routes/host.routes");
@@ -72,6 +73,9 @@ app.use("/api/circle", circleRoutes);
 app.use("/api/notifications", userNotificationRoutes);
 
 // Host & Ticket Routes     
+app.use("/api/host", hostRoutes);
+app.use("/api/tickets", ticketRoutes);
+
 // Admin Routes    
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/users-manage", adminRoutes);
@@ -80,6 +84,7 @@ app.use("/api/admin/match-manage", adminMatchRoutes);
 app.use("/api/admin/notifications", adminNotificationRoutes);
 
 app.use("/api/chats", chatRoutes);
+app.use("/api/spotify", spotifyRoutes);
 
 // ==========================================
 // 5. BACKGROUND CRON JOBS

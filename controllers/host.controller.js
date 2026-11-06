@@ -28,7 +28,7 @@ const createApplicationFeeIntent = async (req, res) => {
   }
 };
 
-// B1 & B7: Apply to Host (Private ID upload + Durable Fee Verification)
+
 const applyToHost = async (req, res) => {
   try {
     const userId = req.user._id;

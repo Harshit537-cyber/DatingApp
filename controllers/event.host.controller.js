@@ -1,7 +1,7 @@
 const Event = require('../models/event.model');
 const cloudinary = require('../config/cloudinary');
 
-// POST /api/host/events
+
 const createHostEvent = async (req, res) => {
   try {
     const hostId = req.user._id;
