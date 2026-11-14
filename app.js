@@ -14,6 +14,7 @@ const adminNotificationRoutes = require("./routes/admin.notification.routes");
 const userNotificationRoutes = require("./routes/user.notification.routes");
 const chatRoutes = require("./routes/chat.routes");
 const spotifyRoutes = require("./routes/spotify.routes");
+const storyRoutes = require("./routes/story.routes");
 
 // --- Host and Ticket Routes ---
 const hostRoutes = require("./routes/host.routes");
@@ -34,14 +35,14 @@ app.use(cors());
 app.post(
   "/api/plans/stripe-webhook",
   express.raw({ type: "application/json" }),
-  handleStripeWebhook
+  handleStripeWebhook,
 );
 
 // Stripe Connect Webhook
 app.post(
   "/api/webhooks/stripe/connect",
   express.raw({ type: "application/json" }),
-  handleConnectWebhook
+  handleConnectWebhook,
 );
 
 // ==========================================
@@ -63,7 +64,6 @@ app.get("/health", (req, res) => {
 // Auth Routes (Login, Register, Facebook Auth yahi se chalenge: /api/auth/facebook)
 app.use("/api/auth", authRoutes);
 
-
 // Core App Routes
 app.use("/api/reports", reportRoutes);
 app.use("/api/swipes", swipeRoutes);
@@ -72,11 +72,11 @@ app.use("/api/matches", matchRoutes);
 app.use("/api/circle", circleRoutes);
 app.use("/api/notifications", userNotificationRoutes);
 
-// Host & Ticket Routes     
+// Host & Ticket Routes
 app.use("/api/host", hostRoutes);
 app.use("/api/tickets", ticketRoutes);
 
-// Admin Routes    
+// Admin Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/users-manage", adminRoutes);
 app.use("/api/admin/plans-manage", adminPlanRoutes);
@@ -86,10 +86,13 @@ app.use("/api/admin/notifications", adminNotificationRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/spotify", spotifyRoutes);
 
+//Story Routes
+app.use("/api/stories", storyRoutes);
+
 // ==========================================
 // 5. BACKGROUND CRON JOBS
 // ==========================================
 require("./jobs/expirePendingTickets.job");
 require("./jobs/flagReVerification.job");
 
-module.exports = app;  
+module.exports = app;

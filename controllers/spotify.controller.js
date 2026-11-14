@@ -47,6 +47,31 @@ const requestSpotifyToken = async (formData) => {
 
   return payload;
 };
+// Get application-level Spotify access token
+const getSpotifyAppToken = async () => {
+  const { clientId, clientSecret } = getSpotifyConfig();
+
+  const response = await fetch(SPOTIFY_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(
+        `${clientId}:${clientSecret}`
+      ).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+    }),
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok || !payload.access_token) {
+    throw new Error("Could not obtain Spotify application token");
+  }
+
+  return payload.access_token;
+};
 
 const requestSpotifyProfile = async (accessToken) => {
   const response = await fetch(`${SPOTIFY_API_URL}/me`, {
@@ -328,6 +353,7 @@ const getCurrentlyPlaying = async (req, res) => {
     });
   }
 };
+
 
 const disconnectSpotify = async (req, res) => {
   try {

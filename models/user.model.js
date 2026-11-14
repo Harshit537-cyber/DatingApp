@@ -40,6 +40,7 @@ const userSchema = new mongoose.Schema(
     languages: [{ type: String }],
     profilePic: { type: String, default: '' },
     additionalPhotos: [{ type: String }],
+    
     spotify: {
       spotifyUserId: { type: String, default: null },
       displayName: { type: String, default: '' },
@@ -52,6 +53,25 @@ const userSchema = new mongoose.Schema(
       oauthState: { type: String, default: null, select: false },
       oauthStateExpiresAt: { type: Date, default: null, select: false },
     },
+
+    // Independent music profile
+    anthemSong: {
+      trackId: { type: String, default: '' },
+      name: { type: String, default: '' },
+      artist: { type: String, default: '' },
+      album: { type: String, default: '' },
+      imageUrl: { type: String, default: '' },
+      externalUrl: { type: String, default: '' },
+    },
+    favoriteArtists: {
+      type: [String],
+      default: [],
+    },
+    musicGenres: {
+      type: [String],
+      default: [],
+    },
+
     blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     boostsAvailable: { type: Number, default: 1 },
     boostUntil: { type: Date, default: null },

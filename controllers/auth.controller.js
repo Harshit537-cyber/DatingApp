@@ -616,6 +616,44 @@ const updateProfile = async (req, res) => {
       }
     }
 
+    // Parse favorite artists
+    if (updates.favoriteArtists) {
+      try {
+        updates.favoriteArtists =
+          typeof updates.favoriteArtists === "string"
+            ? JSON.parse(updates.favoriteArtists)
+            : updates.favoriteArtists;
+      } catch (error) {
+        return res.status(400).json({
+          message: "Invalid favoriteArtists format",
+        });
+      }
+    }
+
+    // Parse music genres
+    if (updates.musicGenres) {
+      try {
+        updates.musicGenres =
+          typeof updates.musicGenres === "string"
+            ? JSON.parse(updates.musicGenres)
+            : updates.musicGenres;
+      } catch (error) {
+        return res.status(400).json({
+          message: "Invalid musicGenres format",
+        });
+      }
+    }
+
+    // Parse anthem song
+    if (updates.anthemSong && typeof updates.anthemSong === "string") {
+      try {
+        updates.anthemSong = JSON.parse(updates.anthemSong);
+      } catch (error) {
+        return res.status(400).json({
+          message: "Invalid anthemSong format",
+        });
+      }
+    }
     const updatedUser = await User.findByIdAndUpdate(userId, updates, {
       new: true,
       runValidators: true,
