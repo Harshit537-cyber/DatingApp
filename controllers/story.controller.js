@@ -606,7 +606,23 @@ exports.deleteStory = async (req, res) => {
       storyOwnerId,
       "story:deleted",
       {
-        storyId: story._id,
+        storyId: story.
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        _id,
         userId: storyOwnerId,
       },
       true
