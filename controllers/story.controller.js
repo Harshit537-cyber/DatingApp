@@ -662,10 +662,17 @@ exports.getUserHighlights = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const result = highlights.map((highlight) => ({
+    const result = highlights.map((highlight) => {
+    const stories = Array.isArray(highlight.stories)
+      ? highlight.stories
+      : [];
+
+    return {
       ...highlight,
-      itemsCount: highlight.stories.length,
-    }));
+      stories,
+      itemsCount: stories.length,
+    };
+  });
 
     return res.status(200).json({
       success: true,
