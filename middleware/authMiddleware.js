@@ -10,34 +10,49 @@ const protect = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
     const user = await User.findById(decoded.id).select('-password');
+
     if (!user) {
-      return res.status(401).json({ success: false, message: 'User no longer exists.' });
+      return res.status(401).json({
+        success: false,
+        message: 'User no longer exists.',
+      });
+    }
+
+    // Reject tokens issued before the user's token version changed.
+    const tokenVersion = decoded.tokenVersion ?? 0;
+
+    if (tokenVersion !== user.tokenVersion) {
+      return res.status(401).json({
+        success: false,
+        message: 'Session expired. Please log in again.',
+      });
     }
 
     req.user = user;
     next();
-  } catch (error) {
-    return res.status(401).json({ success: false, message: 'Not authorized, invalid token.' });
-  }
-};
+      } catch (error) {
+        return res.status(401).json({ success: false, message: 'Not authorized, invalid token.' });
+      }
+    };
 
-// Release Blocker Fix: Separate Admin Authorization
-const protectAdmin = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ success: false, message: 'Admin authorization token required.' });
-    }
+    // Release Blocker Fix: Separate Admin Authorization
+    const protectAdmin = async (req, res, next) => {
+      try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+          return res.status(401).json({ success: false, message: 'Admin authorization token required.' });
+        }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const admin = await Admin.findById(decoded.id).select('-password');
-    if (!admin) {
-      return res.status(403).json({ success: false, message: 'Admin access denied.' });
-    }
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const admin = await Admin.findById(decoded.id).select('-password');
+        if (!admin) {
+          return res.status(403).json({ success: false, message: 'Admin access denied.' });
+        }
 
-    req.admin = admin;
-    next();
+        req.admin = admin;
+        next();
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Admin authorization failed.' });
   }

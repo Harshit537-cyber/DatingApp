@@ -5,6 +5,10 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
+    tokenVersion: {
+      type: Number,
+      default: 0,
+    },
     gender: {
       type: String,
       enum: ['male', 'female', 'other', null],

@@ -25,7 +25,7 @@ const { handleStripeWebhook } = require("./controllers/plan.controller");
 const { handleConnectWebhook } = require("./controllers/webhook.controller");
 
 const app = express();
-
+app.set("trust proxy", 1);
 app.use(cors());
 
 // ==========================================

@@ -5,11 +5,21 @@ const crypto = require("crypto");
 const cloudinary = require("../config/cloudinary");
 const Support = require("../models/support.model");
 const { auth } = require("../config/firebase");
+const PasswordReset = require("../models/passwordReset.model");
+const { sendEmail } = require("../config/email");
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: "30d",
-  });
+const {
+  generateOtp,
+  hashValue,
+  compareHashes,
+} = require("../utils/passwordReset");
+
+const generateToken = (id, tokenVersion = 0) => {
+  return jwt.sign(
+    { id, tokenVersion },
+    process.env.JWT_SECRET,
+    { expiresIn: "30d" }
+  );
 };
 
 const parseAgePreference = (input) => {
@@ -98,7 +108,7 @@ const googleLogin = async (req, res) => {
       email: user.email,
       gender: user.gender,
       profilePic: user.profilePic,
-      token: generateToken(user._id),
+      token: generateToken(user._id, user.tokenVersion),
       isNewUser,
     });
 
@@ -202,7 +212,7 @@ const appleLogin = async (req, res) => {
       email: user.email,
       gender: user.gender,
       profilePic: user.profilePic,
-      token: generateToken(user._id),
+      token: generateToken(user._id, user.tokenVersion),
       isNewUser,
     });
   } catch (error) {
@@ -338,7 +348,7 @@ const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         gender: user.gender,
-        token: generateToken(user._id),
+        token: generateToken(user._id, user.tokenVersion),
       });
     } else {
       res.status(400).json({ message: "Invalid user data" });
@@ -358,7 +368,7 @@ const loginUser = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        token: generateToken(user._id),
+        token: generateToken(user._id, user.tokenVersion),
       });
     } else {
       res.status(401).json({ message: "Invalid email or password" });
@@ -730,6 +740,415 @@ const getHelpRequestById = async (req, res) => {
   }
 };
 
+
+const forgotPassword = async (req, res) => {
+  try {
+    const email =
+      typeof req.body.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required.",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    // Do not reveal whether an account exists.
+    const genericResponse = {
+      success: true,
+      message:
+        "If an account exists with this email, a password-reset OTP will be sent.",
+    };
+
+    if (!user) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Check resend cooldown.
+    const existingReset = await PasswordReset.findOne({
+      user: user._id,
+    });
+
+    const cooldownMs = 60 * 1000;
+
+    if (
+      existingReset?.otpSentAt &&
+      Date.now() - existingReset.otpSentAt.getTime() < cooldownMs
+    ) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Generate OTP and hash it.
+    const otp = generateOtp();
+    const otpHash = hashValue(otp);
+
+    const now = new Date();
+    const otpExpiresAt = new Date(now.getTime() + 10 * 60 * 1000);
+
+    // Save only the hashed OTP.
+    await PasswordReset.findOneAndUpdate(
+      { user: user._id },
+      {
+        $set: {
+          otpHash,
+          otpExpiresAt,
+          otpSentAt: now,
+          otpAttempts: 0,
+          resetTokenHash: null,
+          resetTokenExpiresAt: null,
+          expiresAt: otpExpiresAt,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: "Dating App - Password Reset OTP",
+        text: `Your password-reset OTP is ${otp}. It expires in 10 minutes. If you did not request this, please ignore this email.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto;">
+            <h2>Password Reset Request</h2>
+            <p>Use the following OTP to verify your email address:</p>
+            <h1 style="letter-spacing: 6px;">${otp}</h1>
+            <p>This OTP expires in <strong>10 minutes</strong>.</p>
+            <p>If you did not request a password reset, you can ignore this email.</p>
+          </div>
+        `,
+      });
+    } catch (emailError) {
+      // Do not leave an unusable OTP active if delivery fails.
+      await PasswordReset.updateOne(
+        { user: user._id, otpHash },
+        {
+          $unset: {
+            otpHash: 1,
+            otpExpiresAt: 1,
+            otpSentAt: 1,
+          },
+        }
+      );
+
+      console.error("Password-reset email delivery failed:", emailError);
+
+      return res.status(200).json(genericResponse);
+    }
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error("Forgot password error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
+  }
+};
+
+// verify the reset otp
+
+const verifyResetOtp = async (req, res) => {
+  try {
+    const email =
+      typeof req.body.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+
+    const otp =
+      typeof req.body.otp === "string"
+        ? req.body.otp.trim()
+        : "";
+
+    // Validate input
+    if (!email || !/^\d{6}$/.test(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid email and 6-digit OTP are required.",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP.",
+      });
+    }
+
+    // Explicitly select otpHash because the schema uses select: false.
+    const resetRecord = await PasswordReset.findOne({
+      user: user._id,
+    }).select("+otpHash");
+
+    if (!resetRecord || !resetRecord.otpHash) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP.",
+      });
+    }
+
+    const MAX_ATTEMPTS = 5;
+    const now = new Date();
+
+    // Check attempt limit
+    if (resetRecord.otpAttempts >= MAX_ATTEMPTS) {
+      return res.status(429).json({
+        success: false,
+        message: "Maximum OTP attempts exceeded. Please request a new OTP.",
+      });
+    }
+
+    // Check expiry
+    if (
+      !resetRecord.otpExpiresAt ||
+      resetRecord.otpExpiresAt <= now
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP.",
+      });
+    }
+
+    // Compare submitted OTP with stored HMAC hash.
+    const submittedOtpHash = hashValue(otp);
+    const isValidOtp = compareHashes(
+      submittedOtpHash,
+      resetRecord.otpHash
+    );
+
+    if (!isValidOtp) {
+      // Increment attempts atomically.
+      const updatedRecord = await PasswordReset.findOneAndUpdate(
+        {
+          _id: resetRecord._id,
+          otpAttempts: { $lt: MAX_ATTEMPTS },
+          otpHash: resetRecord.otpHash,
+        },
+        {
+          $inc: { otpAttempts: 1 },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!updatedRecord || updatedRecord.otpAttempts >= MAX_ATTEMPTS) {
+        return res.status(429).json({
+          success: false,
+          message:
+            "Maximum OTP attempts exceeded. Please request a new OTP.",
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP.",
+        attemptsRemaining: MAX_ATTEMPTS - updatedRecord.otpAttempts,
+      });
+    }
+
+    // Generate a cryptographically secure, single-use reset token.
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetTokenHash = hashValue(resetToken);
+
+    // Reset token expires in 10 minutes.
+    const resetTokenExpiresAt = new Date(
+      now.getTime() + 10 * 60 * 1000
+    );
+
+    // Atomically consume OTP and issue reset token.
+    const updatedRecord = await PasswordReset.findOneAndUpdate(
+      {
+        _id: resetRecord._id,
+        otpHash: resetRecord.otpHash,
+        otpExpiresAt: { $gt: now },
+        otpAttempts: { $lt: MAX_ATTEMPTS },
+      },
+      {
+        $set: {
+          otpHash: null,
+          otpExpiresAt: null,
+          resetTokenHash,
+          resetTokenExpiresAt,
+          expiresAt: resetTokenExpiresAt,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP. Please request a new OTP.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully.",
+      resetToken,
+      expiresIn: 600,
+    });
+  } catch (error) {
+    console.error("Verify reset OTP error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
+  }
+};
+
+// Reset password using the verified reset token
+const resetPassword = async (req, res) => {
+  let session;
+
+  try {
+    const email =
+      typeof req.body.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+
+    const resetToken =
+      typeof req.body.resetToken === "string"
+        ? req.body.resetToken.trim()
+        : "";
+
+    const newPassword =
+      typeof req.body.newPassword === "string"
+        ? req.body.newPassword
+        : "";
+
+    // 1. Validate request data
+    if (!email || !resetToken || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, reset token and new password are required.",
+      });
+    }
+
+    // The token generated by verifyResetOtp is 64 hex characters.
+    if (!/^[a-f0-9]{64}$/i.test(resetToken)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token.",
+      });
+    }
+
+    // Password policy: minimum 8 characters, maximum 128.
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be between 8 and 128 characters.",
+      });
+    }
+
+    // 2. Find the account
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token.",
+      });
+    }
+
+    // 3. Hash the submitted reset token and check its validity.
+    const resetTokenHash = hashValue(resetToken);
+    const now = new Date();
+
+    const resetRecord = await PasswordReset.findOne({
+      user: user._id,
+      resetTokenHash,
+      resetTokenExpiresAt: { $gt: now },
+    }).select("+resetTokenHash");
+
+    if (!resetRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token.",
+      });
+    }
+
+    // 4. Hash the new password using the same convention as registration.
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // 5. Update password and consume token atomically.
+    session = await User.startSession();
+
+    await session.withTransaction(async () => {
+      // Only one concurrent request can successfully consume this token.
+      const consumedToken = await PasswordReset.findOneAndDelete(
+        {
+          _id: resetRecord._id,
+          user: user._id,
+          resetTokenHash,
+          resetTokenExpiresAt: { $gt: new Date() },
+        },
+        { session }
+      );
+
+      if (!consumedToken) {
+        throw new Error("RESET_TOKEN_INVALID");
+      }
+
+      const updatedUser = await User.updateOne(
+        { _id: user._id },
+        {
+          $set: { password: hashedPassword },
+          $inc: { tokenVersion: 1 },
+        },
+        { session }
+      );
+
+      if (updatedUser.matchedCount !== 1) {
+        throw new Error("USER_NOT_FOUND");
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully. You can now log in with your new password.",
+    });
+
+  } catch (error) {
+    if (error.message === "RESET_TOKEN_INVALID") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token.",
+      });
+    }
+
+    if (error.message === "USER_NOT_FOUND") {
+      return res.status(400).json({
+        success: false,
+        message: "Unable to reset password. Please try again.",
+      });
+    }
+
+    console.error("Reset password error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
+
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
+  }
+};
+
 const getAllUsersCount = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
@@ -758,5 +1177,8 @@ module.exports = {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
-  getAllUsersCount
+  getAllUsersCount,
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
 };
