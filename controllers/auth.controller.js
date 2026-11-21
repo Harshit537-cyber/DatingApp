@@ -539,8 +539,32 @@ const updateProfile = async (req, res) => {
     const userId = req.user.id;
     const updates = { ...req.body };
 
+    // Explicitly strip sensitive and server-managed fields to prevent mass-assignment
     delete updates.password;
     delete updates.email;
+    delete updates.spotify;
+    delete updates.tokenVersion;
+    delete updates.isVerified;
+    delete updates.walletBalance;
+    delete updates.subscription;
+    delete updates.boostsAvailable;
+    delete updates.boostUntil;
+    delete updates.likes;
+    delete updates.passes;
+    delete updates.matches;
+    delete updates.superLikes;
+    delete updates.blockedUsers;
+    delete updates.isBanned;
+    delete updates.isDeactivated;
+    delete updates.deactivateReason;
+    delete updates.deactivatedAt;
+    delete updates.hostStatus;
+    delete updates.isVerifiedHost;
+    delete updates.hostApplicationId;
+    delete updates.stripeConnectAccountId;
+    delete updates.payoutsEnabled;
+    delete updates.chargesEnabled;
+    delete updates.detailsSubmitted;
 
     if (updates.longitude !== undefined && updates.latitude !== undefined) {
       updates.location = {
@@ -626,55 +650,121 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    // Parse favorite artists
-    if (updates.favoriteArtists) {
-      try {
-        updates.favoriteArtists =
-          typeof updates.favoriteArtists === "string"
-            ? JSON.parse(updates.favoriteArtists)
-            : updates.favoriteArtists;
-      } catch (error) {
+    // Parse and sanitize favorite artists
+    if (updates.favoriteArtists !== undefined) {
+      if (typeof updates.favoriteArtists === "string") {
+        try {
+          updates.favoriteArtists = JSON.parse(updates.favoriteArtists);
+        } catch (e) {
+          updates.favoriteArtists = updates.favoriteArtists
+            .split(",")
+            .map((a) => a.trim())
+            .filter(Boolean);
+        }
+      }
+      if (!Array.isArray(updates.favoriteArtists)) {
         return res.status(400).json({
-          message: "Invalid favoriteArtists format",
+          success: false,
+          message: "favoriteArtists must be an array or comma-separated string",
         });
+      }
+      updates.favoriteArtists = updates.favoriteArtists
+        .map((a) => String(a).trim())
+        .filter(Boolean);
+    }
+
+    // Parse and sanitize music genres
+    if (updates.musicGenres !== undefined) {
+      if (typeof updates.musicGenres === "string") {
+        try {
+          updates.musicGenres = JSON.parse(updates.musicGenres);
+        } catch (e) {
+          updates.musicGenres = updates.musicGenres
+            .split(",")
+            .map((g) => g.trim())
+            .filter(Boolean);
+        }
+      }
+      if (!Array.isArray(updates.musicGenres)) {
+        return res.status(400).json({
+          success: false,
+          message: "musicGenres must be an array or comma-separated string",
+        });
+      }
+      updates.musicGenres = updates.musicGenres
+        .map((g) => String(g).trim())
+        .filter(Boolean);
+    }
+
+    // Parse, validate, and normalize anthem song
+    if (updates.anthemSong !== undefined) {
+      if (updates.anthemSong === null || updates.anthemSong === "" || updates.anthemSong === "null") {
+        updates.anthemSong = null;
+      } else {
+        let anthemObj = updates.anthemSong;
+        if (typeof anthemObj === "string") {
+          try {
+            anthemObj = JSON.parse(anthemObj);
+          } catch (e) {
+            return res.status(400).json({
+              success: false,
+              message: "Invalid anthemSong JSON format",
+            });
+          }
+        }
+
+        if (typeof anthemObj !== "object" || anthemObj === null) {
+          return res.status(400).json({
+            success: false,
+            message: "anthemSong must be an object",
+          });
+        }
+
+        const id = anthemObj.id || anthemObj.trackId;
+        const name = anthemObj.name;
+        const artist = anthemObj.artist;
+
+        if (!id || !name || !artist) {
+          return res.status(400).json({
+            success: false,
+            message: "Anthem song requires id, name, and artist",
+          });
+        }
+
+        const albumName = anthemObj.albumName || anthemObj.album || "";
+        const albumArtUrl = anthemObj.albumArtUrl || anthemObj.imageUrl || "";
+        const spotifyUrl = anthemObj.spotifyUrl || anthemObj.externalUrl || "";
+        const uri = anthemObj.uri || (id ? `spotify:track:${id}` : "");
+
+        updates.anthemSong = {
+          id: String(id).trim(),
+          name: String(name).trim(),
+          artist: String(artist).trim(),
+          albumName: String(albumName).trim(),
+          albumArtUrl: String(albumArtUrl).trim(),
+          spotifyUrl: String(spotifyUrl).trim(),
+          uri: String(uri).trim(),
+          // Legacy backward-compatibility aliases
+          trackId: String(id).trim(),
+          album: String(albumName).trim(),
+          imageUrl: String(albumArtUrl).trim(),
+          externalUrl: String(spotifyUrl).trim(),
+        };
       }
     }
 
-    // Parse music genres
-    if (updates.musicGenres) {
-      try {
-        updates.musicGenres =
-          typeof updates.musicGenres === "string"
-            ? JSON.parse(updates.musicGenres)
-            : updates.musicGenres;
-      } catch (error) {
-        return res.status(400).json({
-          message: "Invalid musicGenres format",
-        });
-      }
-    }
-
-    // Parse anthem song
-    if (updates.anthemSong && typeof updates.anthemSong === "string") {
-      try {
-        updates.anthemSong = JSON.parse(updates.anthemSong);
-      } catch (error) {
-        return res.status(400).json({
-          message: "Invalid anthemSong format",
-        });
-      }
-    }
     const updatedUser = await User.findByIdAndUpdate(userId, updates, {
       new: true,
       runValidators: true,
     }).select("-password");
 
     res.status(200).json({
+      success: true,
       message: "Profile updated successfully",
       user: updatedUser,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

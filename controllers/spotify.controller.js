@@ -1,315 +1,345 @@
-const crypto = require("crypto");
 const User = require("../models/user.model");
+const SpotifyTransaction = require("../models/spotifyTransaction.model");
+const { encryptToken } = require("../utils/crypto.util");
+const spotifyService = require("../services/spotify.service");
 
-const SPOTIFY_AUTHORIZE_URL = "https://accounts.spotify.com/authorize";
-const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
-const SPOTIFY_API_URL = "https://api.spotify.com/v1";
-// Added "user-read-playback-state" for currently playing track
-const SPOTIFY_SCOPES = ["user-read-private", "user-read-email", "user-read-playback-state"];
-const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-const getSpotifyConfig = () => {
-  const { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI } =
-    process.env;
-
-  if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET || !SPOTIFY_REDIRECT_URI) {
-    throw new Error(
-      "SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, and SPOTIFY_REDIRECT_URI must be configured"
-    );
-  }
-
-  return {
-    clientId: SPOTIFY_CLIENT_ID,
-    clientSecret: SPOTIFY_CLIENT_SECRET,
-    redirectUri: SPOTIFY_REDIRECT_URI,
-  };
-};
-
-const requestSpotifyToken = async (formData) => {
-  const { clientId, clientSecret } = getSpotifyConfig();
-  const response = await fetch(SPOTIFY_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams(formData),
-  });
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(`Spotify token request failed (${response.status})`);
-  }
-
-  if (!payload.access_token || !Number.isFinite(payload.expires_in)) {
-    throw new Error("Spotify returned an invalid token response");
-  }
-
-  return payload;
-};
-// Get application-level Spotify access token
-const getSpotifyAppToken = async () => {
-  const { clientId, clientSecret } = getSpotifyConfig();
-
-  const response = await fetch(SPOTIFY_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(
-        `${clientId}:${clientSecret}`
-      ).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-    }),
-  });
-
-  const payload = await response.json();
-
-  if (!response.ok || !payload.access_token) {
-    throw new Error("Could not obtain Spotify application token");
-  }
-
-  return payload.access_token;
-};
-
-const requestSpotifyProfile = async (accessToken) => {
-  const response = await fetch(`${SPOTIFY_API_URL}/me`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(`Spotify profile request failed (${response.status})`);
-  }
-
-  return payload;
-};
-
-const toPublicSpotifyProfile = (profile) => ({
-  id: profile.id,
-  displayName: profile.display_name || "",
-  email: profile.email || "",
-  profileUrl: profile.external_urls?.spotify || "",
-  imageUrl: profile.images?.[0]?.url || "",
-});
-
-const connectSpotify = async (req, res) => {
+/**
+ * GET /api/spotify/auth-url
+ * Generates Spotify OAuth 2.0 PKCE Authorization URL.
+ * Protected: Requires authenticated Bummps user via JWT.
+ */
+const getAuthUrl = async (req, res) => {
   try {
-    const { clientId, redirectUri } = getSpotifyConfig();
-    const state = crypto.randomBytes(32).toString("hex");
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        $set: {
-          "spotify.oauthState": state,
-          "spotify.oauthStateExpiresAt": new Date(Date.now() + OAUTH_STATE_TTL_MS),
-        },
-      },
-      { new: true }
-    );
+    const userId = req.user._id;
 
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
+    // 1. Generate cryptographically secure state and PKCE verifier + challenge
+    const state = spotifyService.generateOAuthState();
+    const codeVerifier = spotifyService.generateCodeVerifier();
+    const codeChallenge = spotifyService.generateCodeChallenge(codeVerifier);
 
-    const authorizationUrl = new URL(SPOTIFY_AUTHORIZE_URL);
-    authorizationUrl.search = new URLSearchParams({
-      client_id: clientId,
-      response_type: "code",
-      redirect_uri: redirectUri,
-      scope: SPOTIFY_SCOPES.join(" "),
+    // Optional redirect URI override from query if client needs custom scheme
+    const clientRedirectUri = req.query.redirectUri || process.env.SPOTIFY_REDIRECT_URI;
+
+    // 2. Persist temporary OAuth transaction with automatic TTL cleanup
+    await SpotifyTransaction.create({
+      userId,
       state,
-    }).toString();
+      codeVerifier,
+      redirectUri: clientRedirectUri,
+      expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
+    });
+
+    // 3. Build authorization URL with S256 PKCE parameters
+    const authUrl = spotifyService.buildAuthorizationUrl({
+      state,
+      codeChallenge,
+      redirectUri: clientRedirectUri,
+    });
 
     return res.status(200).json({
       success: true,
-      data: { authorizationUrl: authorizationUrl.toString() },
+      authUrl,
+      data: { authUrl },
     });
   } catch (error) {
-    console.error("[Spotify] Could not start authorization:", error.message);
+    console.error("[Spotify] Error generating authorization URL:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Could not start Spotify authorization",
+      message: "Could not generate Spotify authorization URL",
     });
   }
 };
 
-const handleSpotifyCallback = async (req, res) => {
+/**
+ * POST & GET /api/spotify/callback
+ * Handles Spotify authorization code exchange.
+ * Supports both:
+ *  - POST (Flutter in-app capture) with JSON body { code, state }
+ *  - GET (Browser redirect) with query parameters ?code=...&state=...
+ */
+const handleCallback = async (req, res) => {
   try {
-    const state = typeof req.query.state === "string" ? req.query.state : "";
-    if (!state) {
-      return res.status(400).json({ success: false, message: "Invalid OAuth state" });
+    const code = req.body?.code || req.query?.code;
+    const state = req.body?.state || req.query?.state;
+    const errorParam = req.query?.error || req.body?.error;
+
+    // Handle user declining Spotify authorization
+    if (errorParam) {
+      if (req.method === "GET") {
+        return res.redirect("bummps://spotify-callback?error=access_denied");
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Spotify authorization was declined or cancelled",
+      });
     }
 
-    const user = await User.findOneAndUpdate(
+    if (!state || typeof state !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Missing OAuth state parameter",
+      });
+    }
+
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Missing Spotify authorization code",
+      });
+    }
+
+    // 1. Atomically consume transaction (single-use, prevents replay attacks)
+    const transaction = await SpotifyTransaction.consume(state);
+
+    if (!transaction) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid, expired, or already used OAuth state",
+      });
+    }
+
+    // 2. Exchange authorization code & PKCE codeVerifier for tokens
+    const tokens = await spotifyService.exchangeAuthorizationCode({
+      code,
+      codeVerifier: transaction.codeVerifier,
+      redirectUri: transaction.redirectUri,
+    });
+
+    // 3. Retrieve authenticated Spotify user profile
+    const profile = await spotifyService.fetchSpotifyProfile(tokens.accessToken);
+
+    // 4. Duplicate Account Protection: Check if Spotify account is already linked to another user
+    const existingUser = await User.findOne({
+      "spotify.spotifyId": profile.id,
+      _id: { $ne: transaction.userId },
+      "spotify.isConnected": true,
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "This Spotify account is already connected to another Bummps user",
+      });
+    }
+
+    // 5. Encrypt credentials at rest using AES-256-GCM
+    const encryptedAccessToken = encryptToken(tokens.accessToken);
+    const encryptedRefreshToken = encryptToken(tokens.refreshToken);
+
+    // 6. Persist Spotify connection details on initiating Bummps user
+    const updatedUser = await User.findByIdAndUpdate(
+      transaction.userId,
       {
-        "spotify.oauthState": state,
-        "spotify.oauthStateExpiresAt": { $gt: new Date() },
-      },
-      {
-        $unset: {
-          "spotify.oauthState": 1,
-          "spotify.oauthStateExpiresAt": 1,
+        $set: {
+          "spotify.isConnected": true,
+          "spotify.spotifyId": profile.id,
+          "spotify.displayName": profile.displayName,
+          "spotify.email": profile.email,
+          "spotify.profileUrl": profile.profileUrl,
+          "spotify.imageUrl": profile.imageUrl,
+          "spotify.accessToken": encryptedAccessToken,
+          "spotify.refreshToken": encryptedRefreshToken,
+          "spotify.tokenExpiresAt": tokens.tokenExpiresAt,
+          // Backward-compatibility aliases
+          "spotify.spotifyUserId": profile.id,
+          "spotify.expiresAt": tokens.tokenExpiresAt,
         },
       },
       { new: true }
     );
 
-    if (!user) {
-      return res.status(400).json({
+    if (!updatedUser) {
+      return res.status(404).json({
         success: false,
-        message: "Spotify authorization expired or state is invalid",
+        message: "User not found",
       });
     }
 
-    if (typeof req.query.error === "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Spotify authorization was declined",
-      });
+    const publicProfile = {
+      isConnected: true,
+      spotifyId: profile.id,
+      displayName: profile.displayName,
+      profileUrl: profile.profileUrl,
+      imageUrl: profile.imageUrl,
+    };
+
+    // If browser GET redirect, display success page and try mobile deep-link
+    if (req.method === "GET") {
+      return res.status(200).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Spotify Connected</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #121212; color: #fff; }
+              .card { background: #181818; max-width: 420px; margin: 40px auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+              .icon { font-size: 52px; color: #1DB954; }
+              h1 { font-size: 24px; margin: 16px 0 8px; }
+              p { color: #b3b3b3; line-height: 1.5; }
+              .name { color: #1DB954; font-weight: bold; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="icon">✓</div>
+              <h1>Spotify Connected!</h1>
+              <p>Successfully linked Spotify account <span class="name">${profile.displayName || profile.id}</span> to your Bummps profile.</p>
+              <p>You can close this window and return to Postman or the Bummps App.</p>
+            </div>
+            <script>
+              try { window.location.href = "bummps://spotify-callback?success=true&displayName=${encodeURIComponent(profile.displayName || profile.id)}"; } catch (e) {}
+            </script>
+          </body>
+        </html>
+      `);
     }
 
-    const code = typeof req.query.code === "string" ? req.query.code : "";
-    if (!code) {
-      return res.status(400).json({
-        success: false,
-        message: "Spotify authorization code is required",
-      });
-    }
-
-    const { redirectUri } = getSpotifyConfig();
-    const token = await requestSpotifyToken({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
+    // JSON response for mobile POST call
+    return res.status(200).json({
+      success: true,
+      message: "Spotify account connected successfully",
+      data: publicProfile,
     });
-    const profile = await requestSpotifyProfile(token.access_token);
-    const spotifyProfile = toPublicSpotifyProfile(profile);
+  } catch (error) {
+    console.error("[Spotify] Callback handling failed:", error.message);
+    const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || "Could not complete Spotify authorization",
+    });
+  }
+};
 
-    await User.findByIdAndUpdate(user._id, {
+/**
+ * POST /api/spotify/disconnect (also supports DELETE)
+ * Unlinks the user's Spotify account and securely wipes stored credentials.
+ * Protected: Requires authenticated Bummps user via JWT.
+ */
+const disconnectSpotify = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    await User.findByIdAndUpdate(userId, {
       $set: {
-        "spotify.spotifyUserId": spotifyProfile.id,
-        "spotify.displayName": spotifyProfile.displayName,
-        "spotify.email": spotifyProfile.email,
-        "spotify.profileUrl": spotifyProfile.profileUrl,
-        "spotify.imageUrl": spotifyProfile.imageUrl,
-        "spotify.accessToken": token.access_token,
-        "spotify.refreshToken": token.refresh_token,
-        "spotify.expiresAt": new Date(Date.now() + token.expires_in * 1000),
+        "spotify.isConnected": false,
+        "spotify.spotifyId": null,
+        "spotify.displayName": null,
+        "spotify.email": "",
+        "spotify.profileUrl": "",
+        "spotify.imageUrl": "",
+        "spotify.accessToken": null,
+        "spotify.refreshToken": null,
+        "spotify.tokenExpiresAt": null,
+        "spotify.spotifyUserId": null,
+        "spotify.expiresAt": null,
       },
     });
 
     return res.status(200).json({
       success: true,
-      message: "Spotify account connected",
-      data: spotifyProfile,
+      message: "Spotify account disconnected successfully",
     });
   } catch (error) {
-    console.error("[Spotify] Authorization callback failed:", error.message);
-    return res.status(502).json({
+    console.error("[Spotify] Disconnect failed:", error.message);
+    return res.status(500).json({
       success: false,
-      message: "Spotify authorization could not be completed",
+      message: "Could not disconnect Spotify account",
     });
   }
 };
 
-const getSpotifyProfile = async (req, res) => {
+/**
+ * GET /api/spotify/status
+ * Returns current user's Spotify connection status and public profile info.
+ * Protected: Requires authenticated Bummps user via JWT.
+ */
+const getSpotifyStatus = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select(
-      "+spotify.accessToken +spotify.refreshToken"
-    );
+    const user = await User.findById(req.user._id);
 
-    if (!user?.spotify?.spotifyUserId || !user.spotify.refreshToken) {
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Spotify account is not connected",
+        message: "User not found",
       });
     }
 
-    let accessToken = user.spotify.accessToken;
-    if (!accessToken || user.spotify.expiresAt <= new Date(Date.now() + 60_000)) {
-      const refreshedToken = await requestSpotifyToken({
-        grant_type: "refresh_token",
-        refresh_token: user.spotify.refreshToken,
-      });
-      accessToken = refreshedToken.access_token;
+    const spotify = user.spotify || {};
+    const isConnected = Boolean(spotify.isConnected && spotify.spotifyId);
 
-      await User.findByIdAndUpdate(user._id, {
-        $set: {
-          "spotify.accessToken": accessToken,
-          "spotify.expiresAt": new Date(
-            Date.now() + refreshedToken.expires_in * 1000
-          ),
-          ...(refreshedToken.refresh_token
-            ? { "spotify.refreshToken": refreshedToken.refresh_token }
-            : {}),
-        },
-      });
-    }
-
-    const profile = await requestSpotifyProfile(accessToken);
-    const spotifyProfile = toPublicSpotifyProfile(profile);
-    await User.findByIdAndUpdate(user._id, {
-      $set: {
-        "spotify.spotifyUserId": spotifyProfile.id,
-        "spotify.displayName": spotifyProfile.displayName,
-        "spotify.email": spotifyProfile.email,
-        "spotify.profileUrl": spotifyProfile.profileUrl,
-        "spotify.imageUrl": spotifyProfile.imageUrl,
+    return res.status(200).json({
+      success: true,
+      data: {
+        isConnected,
+        spotifyId: isConnected ? spotify.spotifyId : null,
+        displayName: isConnected ? spotify.displayName : null,
+        profileUrl: isConnected ? spotify.profileUrl : "",
+        imageUrl: isConnected ? spotify.imageUrl : "",
       },
     });
-
-    return res.status(200).json({ success: true, data: spotifyProfile });
   } catch (error) {
-    console.error("[Spotify] Could not fetch profile:", error.message);
-    return res.status(502).json({
+    console.error("[Spotify] Status check failed:", error.message);
+    return res.status(500).json({
       success: false,
-      message: "Could not fetch Spotify profile",
+      message: "Could not fetch Spotify connection status",
     });
   }
 };
 
+/**
+ * GET /api/spotify/search
+ * Server-side track search proxy using Client Credentials flow.
+ * Works even if the user has not connected a Spotify account.
+ */
+const searchSpotifyTracks = async (req, res) => {
+  try {
+    const { q, type, limit, offset } = req.query;
 
+    if (!q || !q.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Query parameter 'q' is required",
+      });
+    }
+
+    const result = await spotifyService.searchTracks({
+      query: q,
+      type: type || "track",
+      limit,
+      offset,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("[Spotify] Search proxy error:", error.message);
+    const status = error.status || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || "Failed to search Spotify tracks",
+      ...(error.retryAfter ? { retryAfter: error.retryAfter } : {}),
+    });
+  }
+};
+
+/**
+ * GET /api/spotify/currently-playing
+ * Preserves legacy endpoint using centralized token refresh manager.
+ */
 const getCurrentlyPlaying = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select(
-      "+spotify.accessToken +spotify.refreshToken"
-    );
+    const accessToken = await spotifyService.getValidUserAccessToken(req.user._id);
 
-    if (!user?.spotify?.spotifyUserId || !user.spotify.refreshToken) {
-      return res.status(404).json({
-        success: false,
-        message: "Spotify account is not connected",
-      });
-    }
-
-    let accessToken = user.spotify.accessToken;
-    if (!accessToken || user.spotify.expiresAt <= new Date(Date.now() + 60_000)) {
-      const refreshedToken = await requestSpotifyToken({
-        grant_type: "refresh_token",
-        refresh_token: user.spotify.refreshToken,
-      });
-      accessToken = refreshedToken.access_token;
-
-      await User.findByIdAndUpdate(user._id, {
-        $set: {
-          "spotify.accessToken": accessToken,
-          "spotify.expiresAt": new Date(
-            Date.now() + refreshedToken.expires_in * 1000
-          ),
-          ...(refreshedToken.refresh_token
-            ? { "spotify.refreshToken": refreshedToken.refresh_token }
-            : {}),
-        },
-      });
-    }
-
-    const response = await fetch(`${SPOTIFY_API_URL}/me/player/currently-playing`, {
+    const response = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    // Agar user kuch nahi sun raha toh Spotify 204 (No Content) status bhejta hai
     if (response.status === 204 || response.status === 205) {
       return res.status(200).json({
         success: true,
@@ -317,10 +347,13 @@ const getCurrentlyPlaying = async (req, res) => {
       });
     }
 
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(`Spotify currently-playing request failed (${response.status})`);
+      return res.status(response.status).json({
+        success: false,
+        message: "Could not fetch currently playing track",
+      });
     }
 
     if (!payload || !payload.item) {
@@ -346,38 +379,29 @@ const getCurrentlyPlaying = async (req, res) => {
 
     return res.status(200).json({ success: true, data: trackData });
   } catch (error) {
-    console.error("[Spotify] Could not fetch currently playing track:", error.message);
+    if (error.code === "NOT_CONNECTED") {
+      return res.status(404).json({
+        success: false,
+        message: "Spotify account is not connected",
+      });
+    }
+
     return res.status(502).json({
       success: false,
-      message: "Could not fetch currently playing track",
-    });
-  }
-};
-
-
-const disconnectSpotify = async (req, res) => {
-  try {
-    await User.findByIdAndUpdate(req.user._id, {
-      $unset: { spotify: 1 },
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Spotify account disconnected",
-    });
-  } catch (error) {
-    console.error("[Spotify] Could not disconnect account:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Could not disconnect Spotify account",
+      message: error.message || "Could not fetch currently playing track",
     });
   }
 };
 
 module.exports = {
-  connectSpotify,
-  handleSpotifyCallback,
-  getSpotifyProfile,
-  getCurrentlyPlaying, 
+  getAuthUrl,
+  handleCallback,
   disconnectSpotify,
+  getSpotifyStatus,
+  searchSpotifyTracks,
+  getCurrentlyPlaying,
+  // Backward compatibility alias exports
+  connectSpotify: getAuthUrl,
+  handleSpotifyCallback: handleCallback,
+  getSpotifyProfile: getSpotifyStatus,
 };

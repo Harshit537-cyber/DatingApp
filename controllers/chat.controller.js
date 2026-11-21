@@ -92,15 +92,40 @@ exports.accessChat = async (req, res) => {
 
 exports.sendMessage = async (req, res) => {
   try {
-    const { chatId, content } = req.body;
+    const {
+      chatId,
+      content,
+      message: bodyMessage,
+      isMusicShare,
+      trackId,
+      trackName,
+      artistName,
+      albumName,
+      albumArtUrl,
+      spotifyUrl,
+    } = req.body;
     const userId = req.user._id;
 
-    if (!chatId || !content) {
-      return res.status(400).json({ success: false, message: "Chat ID and content are required" });
+    const isMusic = Boolean(isMusicShare);
+    const rawText = bodyMessage || content || "";
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required" });
+    }
+
+    if (isMusic) {
+      if (!trackId || !trackName || !artistName) {
+        return res.status(400).json({
+          success: false,
+          message: "trackId, trackName, and artistName are required for music sharing",
+        });
+      }
+    } else if (!rawText || !rawText.trim()) {
+      return res.status(400).json({ success: false, message: "Message content is required" });
     }
 
     const chat = await Chat.findById(chatId);
-    if (!chat || !chat.participants.includes(userId)) {
+    if (!chat || !chat.participants.some((p) => p.toString() === userId.toString())) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
@@ -108,21 +133,47 @@ exports.sendMessage = async (req, res) => {
       (p) => p.toString() !== userId.toString()
     );
 
+    const messageText = rawText.trim() || `Shared a track: ${trackName} by ${artistName}`;
+    const musicShareData = isMusic
+      ? {
+          trackId: String(trackId),
+          trackName: String(trackName),
+          artistName: String(artistName),
+          albumName: String(albumName || ""),
+          albumArtUrl: String(albumArtUrl || ""),
+          spotifyUrl: String(spotifyUrl || ""),
+        }
+      : null;
+
     const message = await Message.create({
       chat: chatId,
       sender: userId,
       receiver: receiverId,
-      content,
+      message: messageText,
+      messageType: isMusic ? "music" : "text",
+      isMusicShare: isMusic,
+      musicShare: musicShareData,
     });
 
-    await Chat.findByIdAndUpdate(chatId, {
-      lastMessage: message._id,
-      updatedAt: new Date(),
-    });
+    chat.lastMessage = isMusic ? `🎵 ${trackName} - ${artistName}` : messageText;
+    chat.lastMessageAt = new Date();
+    await chat.save();
 
     const populatedMessage = await Message.findById(message._id)
       .populate("sender", "name profilePic")
       .populate("receiver", "name profilePic");
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(chatId.toString()).emit("receiveMessage", populatedMessage);
+      io.to(receiverId.toString()).emit("newMessageNotification", {
+        chatId,
+        senderId: userId,
+        message: messageText,
+        isMusicShare: isMusic,
+        musicShare: musicShareData,
+      });
+    }
 
     return res.status(201).json({ success: true, message: populatedMessage });
   } catch (error) {

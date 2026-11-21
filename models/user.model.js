@@ -46,13 +46,17 @@ const userSchema = new mongoose.Schema(
     additionalPhotos: [{ type: String }],
     
     spotify: {
-      spotifyUserId: { type: String, default: null },
-      displayName: { type: String, default: '' },
+      isConnected: { type: Boolean, default: false },
+      spotifyId: { type: String, default: null },
+      displayName: { type: String, default: null },
       email: { type: String, default: '', select: false },
       profileUrl: { type: String, default: '' },
       imageUrl: { type: String, default: '' },
-      accessToken: { type: String, default: null, select: false },
-      refreshToken: { type: String, default: null, select: false },
+      accessToken: { type: String, default: null, select: false }, // AES-256-GCM encrypted at rest
+      refreshToken: { type: String, default: null, select: false }, // AES-256-GCM encrypted at rest
+      tokenExpiresAt: { type: Date, default: null },
+      // Backward-compatibility aliases with legacy draft fields
+      spotifyUserId: { type: String, default: null },
       expiresAt: { type: Date, default: null },
       oauthState: { type: String, default: null, select: false },
       oauthStateExpiresAt: { type: Date, default: null, select: false },
@@ -60,9 +64,15 @@ const userSchema = new mongoose.Schema(
 
     // Independent music profile
     anthemSong: {
-      trackId: { type: String, default: '' },
+      id: { type: String, default: '' },
       name: { type: String, default: '' },
       artist: { type: String, default: '' },
+      albumName: { type: String, default: '' },
+      albumArtUrl: { type: String, default: '' },
+      spotifyUrl: { type: String, default: '' },
+      uri: { type: String, default: '' },
+      // Backward-compatibility aliases
+      trackId: { type: String, default: '' },
       album: { type: String, default: '' },
       imageUrl: { type: String, default: '' },
       externalUrl: { type: String, default: '' },

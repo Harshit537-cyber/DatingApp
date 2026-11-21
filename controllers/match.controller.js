@@ -239,6 +239,58 @@ const getUserSubscription = async (req, res) => {
   }
 };
 
+const calculateMatchScoreWithMusic = (viewer, candidate) => {
+  // Baseline score starts at 70%
+  let score = 70;
+
+  // Shared general interests bonus (up to +15%)
+  if (Array.isArray(viewer?.interests) && Array.isArray(candidate?.interests)) {
+    const sharedInterests = candidate.interests.filter((i) =>
+      viewer.interests.some((vi) => vi.toLowerCase() === i.toLowerCase())
+    );
+    score += Math.min(sharedInterests.length * 3, 15);
+  }
+
+  let musicBonus = 0;
+  let sharedMusicTaste = false;
+  let sharedAnthemArtist = false;
+  let sharedGenresCount = 0;
+
+  // 1. Same Anthem artist bonus: +10%
+  const viewerArtist = viewer?.anthemSong?.artist?.trim().toLowerCase();
+  const candidateArtist = candidate?.anthemSong?.artist?.trim().toLowerCase();
+  if (viewerArtist && candidateArtist && viewerArtist === candidateArtist) {
+    musicBonus += 10;
+    sharedAnthemArtist = true;
+    sharedMusicTaste = true;
+  }
+
+  // 2. At least two common music genres bonus: +5%
+  if (Array.isArray(viewer?.musicGenres) && Array.isArray(candidate?.musicGenres)) {
+    const commonGenres = candidate.musicGenres.filter((cg) =>
+      viewer.musicGenres.some(
+        (vg) => vg.trim().toLowerCase() === cg.trim().toLowerCase()
+      )
+    );
+    sharedGenresCount = commonGenres.length;
+    if (commonGenres.length >= 2) {
+      musicBonus += 5;
+      sharedMusicTaste = true;
+    }
+  }
+
+  score += musicBonus;
+  const finalScore = Math.min(100, Math.max(0, score));
+
+  return {
+    matchScore: Math.round(finalScore),
+    sharedMusicTaste,
+    sharedAnthemArtist,
+    sharedGenresCount,
+    musicBonus,
+  };
+};
+
 const getSwipeProfiles = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -279,12 +331,21 @@ const getSwipeProfiles = async (req, res) => {
 
     const profiles = await User.find(query)
       .select(
-        "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified"
+        "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified anthemSong musicGenres favoriteArtists"
       )
       .sort({ boostUntil: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
+
+    const enrichedProfiles = profiles.map((p) => {
+      const scoreData = calculateMatchScoreWithMusic(currentUser, p);
+      return {
+        ...p,
+        matchScore: scoreData.matchScore,
+        sharedMusicTaste: scoreData.sharedMusicTaste,
+      };
+    });
 
     const totalProfiles = await User.countDocuments(query);
 
@@ -294,8 +355,8 @@ const getSwipeProfiles = async (req, res) => {
       limit,
       totalProfiles,
       totalPages: Math.ceil(totalProfiles / limit),
-      count: profiles.length,
-      profiles,
+      count: enrichedProfiles.length,
+      profiles: enrichedProfiles,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -320,6 +381,7 @@ const filterProfiles = async (req, res) => {
       minHeight,
       maxHeight,
       isVerified,
+      musicGenres,
     } = req.body;
 
     const currentUser = await User.findById(userId).populate("subscription.plan");
@@ -405,6 +467,25 @@ const filterProfiles = async (req, res) => {
     }
 
     if (
+      musicGenres &&
+      (Array.isArray(musicGenres)
+        ? musicGenres.length > 0
+        : typeof musicGenres === "string"
+        ? musicGenres.trim().length > 0
+        : Boolean(musicGenres))
+    ) {
+      const requestedGenres = Array.isArray(musicGenres)
+        ? musicGenres
+        : typeof musicGenres === "string"
+        ? musicGenres.split(",").map((g) => g.trim()).filter(Boolean)
+        : [musicGenres];
+
+      if (requestedGenres.length > 0) {
+        query.musicGenres = { $in: requestedGenres };
+      }
+    }
+
+    if (
       currentUser.location &&
       currentUser.location.coordinates &&
       currentUser.location.coordinates.length === 2 &&
@@ -421,12 +502,21 @@ const filterProfiles = async (req, res) => {
 
     const profiles = await User.find(query)
       .select(
-        "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified"
+        "name age gender bio jobTitle company school livingIn profilePic additionalPhotos location interests lifestyle languages height isVerified anthemSong musicGenres favoriteArtists"
       )
       .sort({ boostUntil: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
+
+    const enrichedProfiles = profiles.map((p) => {
+      const scoreData = calculateMatchScoreWithMusic(currentUser, p);
+      return {
+        ...p,
+        matchScore: scoreData.matchScore,
+        sharedMusicTaste: scoreData.sharedMusicTaste,
+      };
+    });
 
     const totalProfiles = await User.countDocuments(query);
 
@@ -436,8 +526,8 @@ const filterProfiles = async (req, res) => {
       limit,
       totalProfiles,
       totalPages: Math.ceil(totalProfiles / limit),
-      count: profiles.length,
-      profiles,
+      count: enrichedProfiles.length,
+      profiles: enrichedProfiles,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -872,4 +962,5 @@ module.exports = {
   searchLikes,
   getWhoLikedMeFiltered,
   activateBoost,
+  calculateMatchScoreWithMusic,
 };

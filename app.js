@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 
 const authRoutes = require("./routes/auth.routes");
+const userRoutes = require("./routes/user.routes");
 const reportRoutes = require("./routes/report.routes");
 const planRoutes = require("./routes/plan.routes");
 const swipeRoutes = require("./routes/swipe.routes");
@@ -61,8 +62,9 @@ app.get("/health", (req, res) => {
 // ==========================================
 // 4. API ROUTES MOUNTING
 // ==========================================
-// Auth Routes (Login, Register, Facebook Auth yahi se chalenge: /api/auth/facebook)
+// Auth & User Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/user", userRoutes);
 
 // Core App Routes
 app.use("/api/reports", reportRoutes);
