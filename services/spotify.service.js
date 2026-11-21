@@ -168,13 +168,27 @@ async function fetchSpotifyProfile(accessToken, fetchImpl = fetchWithTimeout) {
     },
   });
 
-  const data = await response.json().catch(() => ({}));
+  let data = null;
+  let rawText = "";
+
+  if (typeof response.text === "function") {
+    rawText = await response.text().catch(() => "");
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  } else if (typeof response.json === "function") {
+    data = await response.json().catch(() => ({}));
+  }
 
   if (!response.ok) {
-    const errorDetails = typeof data === "object" ? JSON.stringify(data) : String(data);
+    const errorDetails =
+      data?.error?.message ||
+      (typeof rawText === "string" && rawText.trim() ? rawText.trim() : `HTTP ${response.status}`);
     const err = new Error(`Spotify profile request failed: ${response.status} - ${errorDetails}`);
     err.status = response.status;
-    err.details = data;
+    err.details = data || rawText;
     throw err;
   }
 
@@ -421,15 +435,31 @@ async function searchTracks({ query, type = "track", limit = 15, offset = 0, fet
     throw err;
   }
 
-  const data = await response.json().catch(() => ({}));
+  let data = null;
+  let rawText = "";
+
+  if (typeof response.text === "function") {
+    rawText = await response.text().catch(() => "");
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  } else if (typeof response.json === "function") {
+    data = await response.json().catch(() => ({}));
+  }
 
   if (!response.ok) {
-    const err = new Error(`Spotify track search failed: ${data.error?.message || response.status}`);
+    const errorDetails =
+      data?.error?.message ||
+      (typeof rawText === "string" && rawText.trim() ? rawText.trim() : `HTTP ${response.status}`);
+    const err = new Error(`Spotify track search failed: ${errorDetails}`);
     err.status = response.status;
+    err.details = data || rawText;
     throw err;
   }
 
-  const rawTracks = data.tracks?.items || [];
+  const rawTracks = data?.tracks?.items || [];
 
   // Sanitize and normalize track metadata to exact contract
   const sanitizedTracks = rawTracks.map((item) => ({
