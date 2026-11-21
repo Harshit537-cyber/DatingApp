@@ -32,7 +32,9 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, unique: true, sparse: true },
     // Sign in with Apple (Firebase UID of the apple.com provider user)
     appleId: { type: String, unique: true, sparse: true, default: undefined },
-    authProvider: { type: String, enum: ['local', 'google', 'apple'], default: 'local' },
+    // Sign in with Facebook (Firebase UID of the facebook.com provider user)
+    facebookId: { type: String, unique: true, sparse: true, default: undefined },
+    authProvider: { type: String, enum: ['local', 'google', 'apple', 'facebook'], default: 'local' },
     livingIn: { type: String, default: '' },
     height: { type: Number, default: null },
     interests: [{ type: String }],
@@ -40,7 +42,7 @@ const userSchema = new mongoose.Schema(
     languages: [{ type: String }],
     profilePic: { type: String, default: '' },
     additionalPhotos: [{ type: String }],
-    
+
     spotify: {
       spotifyUserId: { type: String, default: null },
       displayName: { type: String, default: '' },

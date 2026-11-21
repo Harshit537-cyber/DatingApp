@@ -211,6 +211,115 @@ const appleLogin = async (req, res) => {
   }
 };
 
+// ==========================================
+// FACEBOOK AUTH CONTROLLER (FIREBASE VERIFICATION)
+// ==========================================
+// Flow: Flutter app -> Facebook SDK -> Firebase Auth SDK -> Firebase ID token -> this endpoint.
+// Identity (uid, email, name, picture) is taken ONLY from the verified token,
+// never from the request body.
+const facebookLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ message: "Firebase ID token is required" });
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await auth.verifyIdToken(idToken);
+    } catch (err) {
+      console.error("Facebook verifyIdToken failed:", err.code, err.message);
+      return res.status(401).json({ message: "Invalid or expired Firebase token" });
+    }
+
+    // Make sure this token really came from Facebook sign-in
+    if (decodedToken.firebase?.sign_in_provider !== "facebook.com") {
+      return res.status(401).json({ message: "Token was not issued via Facebook sign-in" });
+    }
+
+    const facebookId = decodedToken.uid;
+    const tokenEmail = decodedToken.email ? decodedToken.email.toLowerCase() : null;
+    // Facebook may not return an email (phone-only accounts or permission denied)
+    const email = tokenEmail || `${facebookId}@facebook.noemail.invalid`;
+    const displayName =
+      decodedToken.name || (tokenEmail ? tokenEmail.split("@")[0] : "") || "User";
+    const picture = decodedToken.picture || "";
+
+    let user = await User.findOne({ facebookId });
+    let isNewUser = false;
+
+    if (!user) {
+      // Do not silently attach this Facebook login to an existing account that
+      // has the same email: Firebase does not mark Facebook emails as verified,
+      // so doing so would allow account takeover.
+      if (tokenEmail) {
+        const emailOwner = await User.findOne({ email: tokenEmail });
+        if (emailOwner) {
+          return res.status(409).json({
+            message:
+              "This email is already registered with another sign-in method. Please sign in with that method.",
+          });
+        }
+      }
+
+      isNewUser = true;
+
+      const randomPassword = crypto.randomBytes(24).toString("hex");
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      try {
+        user = await User.create({
+          name: displayName,
+          email,
+          password: hashedPassword,
+          facebookId,
+          authProvider: "facebook",
+          profilePic: picture,
+          gender: null,
+          interestedIn: null,
+          age: null,
+          location: { type: "Point", coordinates: [0, 0] },
+        });
+      } catch (err) {
+        // Two simultaneous first-logins: the other request already created the user
+        if (err.code === 11000) {
+          user = await User.findOne({ facebookId });
+          isNewUser = false;
+          if (!user) {
+            return res.status(409).json({
+              message:
+                "This email is already registered with another sign-in method. Please sign in with that method.",
+            });
+          }
+        } else {
+          throw err;
+        }
+      }
+    } else if (!user.gender || !user.age || !user.interestedIn) {
+      isNewUser = true; // existing but profile incomplete -> needs onboarding
+    }
+
+    if (user.isBanned) {
+      return res.status(403).json({ message: "This account has been banned" });
+    }
+
+    res.status(200).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      gender: user.gender,
+      profilePic: user.profilePic,
+      token: generateToken(user._id),
+      isNewUser,
+    });
+  } catch (error) {
+    console.error("❌ Facebook Auth Failed:", error.message);
+    res.status(500).json({ message: "Facebook authentication failed: " + error.message });
+  }
+};
+
 const registerUser = async (req, res) => {
   try {
     const {
@@ -747,6 +856,7 @@ module.exports = {
   loginUser,
   googleLogin,
   appleLogin,
+  facebookLogin,
   getMe,
   updateProfile,
   deleteAccount,

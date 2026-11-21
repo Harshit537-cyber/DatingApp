@@ -11,6 +11,7 @@ const {
   loginUser,
   googleLogin, // Imported Google Auth logic
   appleLogin, // Imported Apple Auth logic
+  facebookLogin, // Imported Facebook Auth logic
   getMe,
   updateProfile,
   deleteAccount,
@@ -41,6 +42,7 @@ router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
 router.post("/google", googleLogin); // Route registered
 router.post("/apple", appleLogin);
+router.post("/facebook", facebookLogin); // Public: must stay ABOVE router.use(protect)
 
 // ==========================================
 // PROTECTED ROUTES (Requires JWT Auth Token)
