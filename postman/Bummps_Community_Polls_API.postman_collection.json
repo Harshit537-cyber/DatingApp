@@ -1,0 +1,531 @@
+{
+  "info": {
+    "_postman_id": "c1f7b889-b001-4993-a4e9-bummps-community-polls",
+    "name": "Bummps_Community_Polls_API",
+    "description": "Production-grade Community Polls, Voting & The Buzz Discussion Integration API collection for Bummps Dating App.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:5000",
+      "type": "string"
+    },
+    {
+      "key": "userToken",
+      "value": "YOUR_USER_BEARER_TOKEN",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "YOUR_ADMIN_BEARER_TOKEN",
+      "type": "string"
+    },
+    {
+      "key": "pollId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "discussionId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Poll Creation",
+      "item": [
+        {
+          "name": "POST Create Community Poll (2 Options)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Returns poll and auto-created discussion', function () {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.poll).to.be.an('object');",
+                  "    pm.expect(jsonData.data.discussion).to.be.an('object');",
+                  "    pm.expect(jsonData.data.discussion.isPoll).to.be.true;",
+                  "});",
+                  "if (jsonData.data && jsonData.data.poll && jsonData.data.poll._id) {",
+                  "    pm.collectionVariables.set('pollId', jsonData.data.poll._id);",
+                  "}",
+                  "if (jsonData.data && jsonData.data.discussion && jsonData.data.discussion._id) {",
+                  "    pm.collectionVariables.set('discussionId', jsonData.data.discussion._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"First Date Vibe: Speakeasy Cocktails or Candlelit Rooftop?\",\n  \"category\": \"DATING VIBE\",\n  \"options\": [\n    \"🍸 Speakeasy Cocktails\",\n    \"🕯️ Candlelit Rooftop\"\n  ],\n  \"durationDays\": 7\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls"]
+            }
+          }
+        },
+        {
+          "name": "POST Create Community Poll (4 Options)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Poll has 4 options', function () {",
+                  "    pm.expect(jsonData.data.poll.options.length).to.eql(4);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"Ideal Sunday Morning with Your Partner?\",\n  \"category\": \"WEEKEND RHYTHM\",\n  \"options\": [\n    \"☕ Artisanal Coffee & Vinyl\",\n    \"🍳 Cook French Toast Together\",\n    \"🏃 Sunrise Trail Run\",\n    \"🛌 Sleep in & Order Brunch\"\n  ],\n  \"durationDays\": 14\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls"]
+            }
+          }
+        },
+        {
+          "name": "POST Create Poll - Validation Failure (1 Option)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Rejected with validation message', function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"Invalid poll with single option?\",\n  \"category\": \"DATING VIBE\",\n  \"options\": [\n    \"Only one option\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Poll Feed",
+      "item": [
+        {
+          "name": "GET Community Polls Feed (Default Active)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Returns polls array and pagination', function () {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.polls).to.be.an('array');",
+                  "    pm.expect(jsonData.data.pagination).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls?page=1&limit=10&status=active",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET Community Polls Feed (Filtered by Category)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls?category=DATING%20VIBE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "DATING VIBE"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Poll Details",
+      "item": [
+        {
+          "name": "GET Single Poll Details by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Returns complete poll object with percentages', function () {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data._id).to.eql(pm.collectionVariables.get('pollId'));",
+                  "    pm.expect(jsonData.data.options[0]).to.have.property('percentage');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls/{{pollId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls", "{{pollId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Voting",
+      "item": [
+        {
+          "name": "POST Cast Vote on Option 0",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Vote recorded and updated percentages returned', function () {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.hasVoted).to.be.true;",
+                  "    pm.expect(jsonData.data.userSelectedOptionIndex).to.eql(0);",
+                  "    pm.expect(jsonData.data.totalVotes).to.be.at.least(1);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"optionIndex\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls/{{pollId}}/vote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls", "{{pollId}}", "vote"]
+            }
+          }
+        },
+        {
+          "name": "POST Cast Vote - Duplicate Vote Prevention (Expect 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Rejected with duplicate vote message', function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.message).to.match(/already voted/i);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"optionIndex\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls/{{pollId}}/vote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls", "{{pollId}}", "vote"]
+            }
+          }
+        },
+        {
+          "name": "POST Cast Vote - Invalid Option Index (Expect 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"optionIndex\": 99\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls/{{pollId}}/vote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls", "{{pollId}}", "vote"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Discussion Integration",
+      "item": [
+        {
+          "name": "GET Linked Discussion in The Buzz (by discussionId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Discussion is identified as poll with populated pollId', function () {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.isPoll).to.be.true;",
+                  "    pm.expect(jsonData.data.pollId).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/discussions/{{discussionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "discussions", "{{discussionId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Poll Deletion",
+      "item": [
+        {
+          "name": "DELETE Poll (Creator or Admin Authorization)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Poll deleted successfully', function () {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/circle/polls/{{pollId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "circle", "polls", "{{pollId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

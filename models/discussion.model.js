@@ -12,8 +12,24 @@ const discussionSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    pollId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Poll",
+      default: null,
+    },
+    isPoll: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Discussion", discussionSchema);
+const Discussion = mongoose.models.Discussion || mongoose.model("Discussion", discussionSchema);
+
+// Register CircleDiscussion alias if not already registered for cross-spec compatibility
+if (!mongoose.models.CircleDiscussion) {
+  mongoose.model("CircleDiscussion", discussionSchema);
+}
+
+module.exports = Discussion;
