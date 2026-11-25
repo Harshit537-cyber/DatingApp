@@ -29,6 +29,14 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
 
+// Normalize duplicate slashes in incoming URL path (e.g. //api/... -> /api/...)
+app.use((req, res, next) => {
+  if (req.url && req.url.startsWith("//")) {
+    req.url = req.url.replace(/^\/+/, "/");
+  }
+  next();
+});
+
 // ==========================================
 // 1. RAW BODY WEBHOOKS (express.json se pehle aane chahiye)
 // ==========================================
