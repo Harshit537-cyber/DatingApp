@@ -9,8 +9,9 @@ const { protect } = require("../middleware/authMiddleware");
 const {
   registerUser,
   loginUser,
-  googleLogin,
-  appleLogin,
+  googleLogin, // Imported Google Auth logic
+  appleLogin, // Imported Apple Auth logic
+  facebookLogin, // Imported Facebook Auth logic
   getMe,
   updateProfile,
   deleteAccount,
@@ -50,14 +51,15 @@ router.post("/register", photoUploads, registerUser);
 router.post("/login", loginUser);
 router.post("/google", googleLogin); // Route registered
 router.post("/apple", appleLogin);
+router.post("/facebook", facebookLogin); // Public: must stay ABOVE router.use(protect)
 router.post("/forgot-password", forgotPasswordLimiter, forgotPassword);
 
 router.post("/verify-reset-otp", verifyResetOtpLimiter, verifyResetOtp);
 
 router.post("/reset-password", resetPasswordLimiter, resetPassword);
+
 // PROTECTED ROUTES
 router.use(protect);
-
 // ==========================================
 // PROTECTED ROUTES (Requires JWT Auth Token)
 // ==========================================
