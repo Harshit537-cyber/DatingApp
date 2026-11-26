@@ -1,4 +1,5 @@
 const Discussion = require("../models/discussion.model");
+require("../models/poll.model");
 
 const createDiscussion = async (req, res) => {
   try {
@@ -32,10 +33,12 @@ const getDiscussions = async (req, res) => {
 
 const getDiscussionById = async (req, res) => {
   try {
-    const discussion = await Discussion.findById(req.params.id).populate(
-      "createdBy",
-      "name profilePic"
-    );
+    const discussion = await Discussion.findById(req.params.id)
+      .populate("createdBy", "name profilePic")
+      .populate({
+        path: "pollId",
+        populate: { path: "createdBy", select: "name profilePic" },
+      });
 
     if (!discussion) {
       return res.status(404).json({ success: false, message: "Discussion not found" });
@@ -57,6 +60,11 @@ const deleteDiscussion = async (req, res) => {
 
     if (discussion.createdBy.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: "Not authorized to delete this discussion" });
+    }
+
+    if (discussion.pollId) {
+      const Poll = require("../models/poll.model");
+      await Poll.findByIdAndUpdate(discussion.pollId, { $set: { discussionId: null } });
     }
 
     await discussion.deleteOne();

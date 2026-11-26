@@ -22,20 +22,34 @@ const messageSchema = new mongoose.Schema(
 
     message: {
       type: String,
-      required: true,
-      trim: true
+      trim: true,
+      default: '',
     },
 
     isRead: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
     messageType: {
       type: String,
-      enum: ['text', 'image'],
-      default: 'text'
-    }
+      enum: ['text', 'image', 'music'],
+      default: 'text',
+    },
+
+    isMusicShare: {
+      type: Boolean,
+      default: false,
+    },
+
+    musicShare: {
+      trackId: { type: String, default: null },
+      trackName: { type: String, default: null },
+      artistName: { type: String, default: null },
+      albumName: { type: String, default: null },
+      albumArtUrl: { type: String, default: null },
+      spotifyUrl: { type: String, default: null },
+    },
 
   },
   {

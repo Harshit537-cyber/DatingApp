@@ -13,6 +13,9 @@ const {
   getDiscussionsByCategory,
   searchDiscussions,
 } = require("../controllers/discussion.controller");
+const pollRoutes = require("./poll.routes");
+
+router.use("/polls", pollRoutes);
 
 router.get("/dashboard", protect, getCircleDashboard);
 router.post("/connect/:targetUserId", protect, connectWithUser);

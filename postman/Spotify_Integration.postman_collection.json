@@ -1,0 +1,475 @@
+{
+  "info": {
+    "name": "Bummps Dating App - Spotify Integration API",
+    "_postman_id": "bummps-spotify-integration-v1",
+    "description": "Production Postman Collection for Spotify Integration in Bummps Dating App.\n\n### Environment Variables Required:\n- `baseUrl`: Base URL of the API server (e.g. `http://localhost:5000` or `https://api.bummps.com`)\n- `authToken`: Bummps User JWT Bearer token obtained from `/api/auth/login`\n\n### Real OAuth 2.0 PKCE Flow Testing Instructions:\n1. Call `GET {{baseUrl}}/api/spotify/auth-url` with `Authorization: Bearer {{authToken}}`.\n2. Copy the returned `authUrl` from the response.\n3. Open the `authUrl` in a browser window. Log into Spotify and click 'Agree'.\n4. Spotify will redirect to `https://api.bummps.com/api/spotify/callback?code=<CODE>&state=<STATE>` (or mobile deep-link `bummps://spotify-callback`).\n5. Extract the `code` and `state` parameters from the redirected URL.\n6. Make a `POST {{baseUrl}}/api/spotify/callback` request with JSON body `{ \"code\": \"<CODE>\", \"state\": \"<STATE>\" }`.\n\n### Limitations of Testing OAuth Callbacks in Postman:\n- Postman cannot automatically intercept mobile custom URL schemes (like `bummps://`). Therefore, you must manually copy the `code` and `state` query parameters from your browser address bar and paste them into the callback request.\n- OAuth states are single-use and expire in 10 minutes. Once consumed, re-running the callback request will return HTTP 400 (Anti-Replay protection).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "YOUR_BUMMPS_JWT_TOKEN",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Spotify Account Connection (OAuth PKCE)",
+      "item": [
+        {
+          "name": "GET Auth URL (Initiate OAuth PKCE)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/spotify/auth-url",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "spotify", "auth-url"]
+            },
+            "description": "Generates a cryptographically secure Spotify OAuth 2.0 authorization URL with PKCE (S256 code challenge) and scopes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns valid authUrl', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.authUrl).to.include('accounts.spotify.com/authorize');",
+                  "    pm.expect(json.authUrl).to.include('code_challenge=');",
+                  "    pm.expect(json.authUrl).to.include('code_challenge_method=S256');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Spotify Callback (Exchange Code for Tokens)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"AQD_REPLACE_WITH_CODE_FROM_SPOTIFY_REDIRECT\",\n  \"state\": \"REPLACE_WITH_STATE_FROM_SPOTIFY_REDIRECT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/spotify/callback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "spotify", "callback"]
+            },
+            "description": "Exchanges Spotify authorization code and atomic PKCE verifier for tokens. Persists credentials encrypted at rest."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or expected 400 for mock code', function () {",
+                  "    pm.expect([200, 400]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.data.isConnected).to.be.true;",
+                  "    pm.expect(json.data.accessToken).to.be.undefined;",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Spotify Connection Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/spotify/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "spotify", "status"]
+            },
+            "description": "Checks the authenticated user's Spotify account connection status without exposing sensitive credentials."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response includes isConnected flag and no tokens', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.data).to.have.property('isConnected');",
+                  "    pm.expect(json.data.accessToken).to.be.undefined;",
+                  "    pm.expect(json.data.refreshToken).to.be.undefined;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Disconnect Spotify Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/spotify/disconnect",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "spotify", "disconnect"]
+            },
+            "description": "Unlinks the authenticated user's Spotify account and wipes stored tokens from MongoDB."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Account disconnected message returned', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.message).to.include('disconnected');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Spotify Song Search Proxy",
+      "item": [
+        {
+          "name": "GET Search Songs (Client Credentials)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/spotify/search?q=Starboy&type=track&limit=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "spotify", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Starboy",
+                  "description": "Search keyword query (e.g. track name or artist)"
+                },
+                {
+                  "key": "type",
+                  "value": "track",
+                  "description": "Item type: track"
+                },
+                {
+                  "key": "limit",
+                  "value": "15",
+                  "description": "Number of results (1-50)"
+                }
+              ]
+            },
+            "description": "Searches Spotify tracks using application-level Client Credentials. Does not require user Spotify authentication."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns sanitized tracks list', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.data.tracks).to.be.an('array');",
+                  "    if (json.data.tracks.length > 0) {",
+                  "        var track = json.data.tracks[0];",
+                  "        pm.expect(track).to.have.property('id');",
+                  "        pm.expect(track).to.have.property('name');",
+                  "        pm.expect(track).to.have.property('artist');",
+                  "        pm.expect(track).to.have.property('albumArtUrl');",
+                  "        pm.expect(track).to.have.property('spotifyUrl');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Profile Anthem & Music Preferences",
+      "item": [
+        {
+          "name": "PUT Update Profile Anthem & Music Genres",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"anthemSong\": {\n    \"id\": \"4dH1jW6Z8mQp4K1o7w9rT\",\n    \"name\": \"Starboy\",\n    \"artist\": \"The Weeknd\",\n    \"albumName\": \"Starboy\",\n    \"albumArtUrl\": \"https://i.scdn.co/image/ab67616d0000b2734718e2b124f79258be7bc452\",\n    \"spotifyUrl\": \"https://open.spotify.com/track/4dH1jW6Z8mQp4K1o7w9rT\",\n    \"uri\": \"spotify:track:4dH1jW6Z8mQp4K1o7w9rT\"\n  },\n  \"musicGenres\": [\"Hip-Hop\", \"R&B / Soul\", \"Indie Rock\"],\n  \"favoriteArtists\": [\"The Weeknd\", \"Drake\", \"Arctic Monkeys\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "user", "profile"]
+            },
+            "description": "Updates authenticated user's anthem song, favorite artists, and music genres. Mass-assignment protected."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Profile updated with anthem and genres', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.user.anthemSong.name).to.eql('Starboy');",
+                  "    pm.expect(json.user.musicGenres).to.include('Hip-Hop');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET User Profile (Anthem & Music)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/user/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "user", "profile"]
+            },
+            "description": "Fetches current user's profile with public music fields and without exposing Spotify tokens."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response includes anthemSong without credentials', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.user).to.have.property('anthemSong');",
+                  "    pm.expect(json.user).to.have.property('musicGenres');",
+                  "    if (json.user.spotify) {",
+                  "        pm.expect(json.user.spotify.accessToken).to.be.undefined;",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Music-Based Discovery",
+      "item": [
+        {
+          "name": "GET Discovery Feed (Swipe with Music Taste & matchScore)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/matches/feed?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "matches", "feed"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Discovery feed returning candidate profiles enriched with anthemSong, musicGenres, and calculated matchScore bonus."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Profiles contain matchScore and music data', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.profiles).to.be.an('array');",
+                  "    if (json.profiles.length > 0) {",
+                  "        var p = json.profiles[0];",
+                  "        pm.expect(p).to.have.property('matchScore');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Filter Matches by Music Genres",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"musicGenres\": [\"Hip-Hop\", \"R&B / Soul\"],\n  \"ageMin\": 20,\n  \"ageMax\": 35,\n  \"maxDistance\": 50\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/matches/filter",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "matches", "filter"]
+            },
+            "description": "Filters candidate swipe profiles by music taste using MongoDB $in array matching."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Filtered profiles returned successfully', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.profiles).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Real-Time Chat Music Sharing (REST Fallback)",
+      "item": [
+        {
+          "name": "POST Send Music Share Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chatId\": \"REPLACE_WITH_VALID_CHAT_ID\",\n  \"isMusicShare\": true,\n  \"trackId\": \"4dH1jW6Z8mQp4K1o7w9rT\",\n  \"trackName\": \"Starboy\",\n  \"artistName\": \"The Weeknd\",\n  \"albumName\": \"Starboy\",\n  \"albumArtUrl\": \"https://i.scdn.co/image/ab67616d0000b2734718e2b124f79258be7bc452\",\n  \"spotifyUrl\": \"https://open.spotify.com/track/4dH1jW6Z8mQp4K1o7w9rT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chats/message",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chats", "message"]
+            },
+            "description": "Sends an interactive music card inside a matched chat conversation."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 403/400 for mock chat', function () {",
+                  "    pm.expect([201, 400, 403]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
