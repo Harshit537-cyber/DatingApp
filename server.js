@@ -92,9 +92,35 @@ io.on("connection", async (socket) => {
 
   socket.on("sendMessage", async (data, callback) => {
     try {
-      const { receiverId, message } = data;
+      const {
+        receiverId,
+        message,
+        isMusicShare,
+        trackId,
+        trackName,
+        artistName,
+        albumName,
+        albumArtUrl,
+        spotifyUrl,
+      } = data || {};
 
-      if (!receiverId || !message) {
+      const isMusic = Boolean(isMusicShare);
+
+      if (!receiverId) {
+        if (callback) callback({ error: "receiverId is required" });
+        return;
+      }
+
+      if (isMusic) {
+        if (!trackId || !trackName || !artistName) {
+          if (callback)
+            callback({
+              error:
+                "trackId, trackName, and artistName are required for music sharing",
+            });
+          return;
+        }
+      } else if (!message || !message.trim()) {
         if (callback) callback({ error: "receiverId and message are required" });
         return;
       }
@@ -126,27 +152,94 @@ io.on("connection", async (socket) => {
         });
       }
 
+      const finalMessageText =
+        message && message.trim()
+          ? message.trim()
+          : isMusic
+          ? `Shared a track: ${trackName} by ${artistName}`
+          : "";
+
+      const musicShareData = isMusic
+        ? {
+            trackId: String(trackId),
+            trackName: String(trackName),
+            artistName: String(artistName),
+            albumName: String(albumName || ""),
+            albumArtUrl: String(albumArtUrl || ""),
+            spotifyUrl: String(spotifyUrl || ""),
+          }
+        : null;
+
       const newMessage = await Message.create({
         chat: chat._id,
         sender: userId,
         receiver: receiverId,
-        message: message,
+        message: finalMessageText,
+        messageType: isMusic ? "music" : "text",
+        isMusicShare: isMusic,
+        musicShare: musicShareData,
       });
 
-      chat.lastMessage = message;
+      chat.lastMessage = isMusic
+        ? `🎵 ${trackName} - ${artistName}`
+        : finalMessageText;
       chat.lastMessageAt = new Date();
       await chat.save();
 
-      console.log(`[Socket] Message Sent Successfully from ${userName} (${userId}) to Receiver (${receiverId}) in Chat: ${chat._id}`);
+      console.log(
+        `[Socket] Message Sent Successfully from ${userName} (${userId}) to Receiver (${receiverId}) in Chat: ${chat._id}`
+      );
 
-      io.to(chat._id.toString()).emit("receiveMessage", newMessage);
+      const broadcastPayload = {
+        _id: newMessage._id,
+        messageId: newMessage._id,
+        chat: chat._id,
+        roomId: chat._id.toString(),
+        senderId: userId,
+        sender: userId,
+        receiverId,
+        receiver: receiverId,
+        message: newMessage.message,
+        text: newMessage.message,
+        messageType: newMessage.messageType,
+        isMusicShare: newMessage.isMusicShare,
+        musicShare: newMessage.musicShare,
+        createdAt: newMessage.createdAt,
+        time: "Just Now",
+        date: "TODAY",
+      };
+
+      io.to(chat._id.toString()).emit("receiveMessage", broadcastPayload);
       io.to(receiverId.toString()).emit("newMessageNotification", {
         chatId: chat._id,
         senderId: userId,
-        message,
+        message: newMessage.message,
+        isMusicShare: newMessage.isMusicShare,
+        musicShare: newMessage.musicShare,
       });
 
-      if (callback) callback({ success: true, data: newMessage });
+      // Send Notification if receiver is offline
+      const isReceiverOnline =
+        activeUsers.has(receiverId.toString()) || receiver.isOnline;
+      if (!isReceiverOnline) {
+        try {
+          const Notification = require("./models/notification.model");
+          await Notification.create({
+            title: userName,
+            message: isMusic
+              ? `🔥 Shared a track: ${trackName} by ${artistName}`
+              : finalMessageText,
+            recipient: receiverId,
+          });
+        } catch (notifErr) {
+          console.error(
+            "[Socket Notification] Error creating offline notification:",
+            notifErr.message
+          );
+        }
+      }
+
+      if (callback) callback({ success: true, data: broadcastPayload });
     } catch (error) {
       if (callback) callback({ error: error.message });
     }

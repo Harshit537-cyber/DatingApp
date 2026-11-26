@@ -23,8 +23,17 @@ const {
   submitHelpRequest,
   getUserHelpRequests,
   getHelpRequestById,
-  getAllUsersCount
+  getAllUsersCount,
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
 } = require("../controllers/auth.controller");
+
+const {
+  forgotPasswordLimiter,
+  verifyResetOtpLimiter,
+  resetPasswordLimiter,
+} = require("../middleware/rateLimit.middleware");
 
 // Multer Config (Memory Storage for Cloudinary Uploads)
 const storage = multer.memoryStorage();
@@ -43,11 +52,17 @@ router.post("/login", loginUser);
 router.post("/google", googleLogin); // Route registered
 router.post("/apple", appleLogin);
 router.post("/facebook", facebookLogin); // Public: must stay ABOVE router.use(protect)
+router.post("/forgot-password", forgotPasswordLimiter, forgotPassword);
 
+router.post("/verify-reset-otp", verifyResetOtpLimiter, verifyResetOtp);
+
+router.post("/reset-password", resetPasswordLimiter, resetPassword);
+
+// PROTECTED ROUTES
+router.use(protect);
 // ==========================================
 // PROTECTED ROUTES (Requires JWT Auth Token)
 // ==========================================
-router.use(protect); // Middleware runs for all routes below
 
 router.get("/me", getMe);
 router.get("/profile/:id", getProfileById);

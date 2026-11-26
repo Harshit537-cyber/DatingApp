@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 
 const authRoutes = require("./routes/auth.routes");
+const userRoutes = require("./routes/user.routes");
 const reportRoutes = require("./routes/report.routes");
 const planRoutes = require("./routes/plan.routes");
 const swipeRoutes = require("./routes/swipe.routes");
@@ -25,8 +26,16 @@ const { handleStripeWebhook } = require("./controllers/plan.controller");
 const { handleConnectWebhook } = require("./controllers/webhook.controller");
 
 const app = express();
-
+app.set("trust proxy", 1);
 app.use(cors());
+
+// Normalize duplicate slashes in incoming URL path (e.g. //api/... -> /api/...)
+app.use((req, res, next) => {
+  if (req.url && req.url.startsWith("//")) {
+    req.url = req.url.replace(/^\/+/, "/");
+  }
+  next();
+});
 
 // ==========================================
 // 1. RAW BODY WEBHOOKS (express.json se pehle aane chahiye)
@@ -61,8 +70,9 @@ app.get("/health", (req, res) => {
 // ==========================================
 // 4. API ROUTES MOUNTING
 // ==========================================
-// Auth Routes (Login, Register, Facebook Auth yahi se chalenge: /api/auth/facebook)
+// Auth & User Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/user", userRoutes);
 
 // Core App Routes
 app.use("/api/reports", reportRoutes);

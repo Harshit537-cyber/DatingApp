@@ -606,7 +606,8 @@ exports.deleteStory = async (req, res) => {
       storyOwnerId,
       "story:deleted",
       {
-        storyId: story._id,
+        storyId: story.
+        _id,
         userId: storyOwnerId,
       },
       true
@@ -631,6 +632,7 @@ exports.deleteStory = async (req, res) => {
 // GET /api/stories/highlights/:userId
 // ======================================================
 
+
 exports.getUserHighlights = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -646,10 +648,17 @@ exports.getUserHighlights = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const result = highlights.map((highlight) => ({
-      ...highlight,
-      itemsCount: highlight.stories.length,
-    }));
+    const result = highlights.map((highlight) => {
+      const stories = Array.isArray(highlight.stories)
+        ? highlight.stories
+        : [];
+
+      return {
+        ...highlight,
+        stories,
+        itemsCount: stories.length,
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -665,6 +674,7 @@ exports.getUserHighlights = async (req, res) => {
     });
   }
 };
+
 
 // ======================================================
 // CREATE HIGHLIGHT
